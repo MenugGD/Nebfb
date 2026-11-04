@@ -1,0 +1,83 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Collector user profile with progress, inventory, coins, and role.",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string", "maxLength": 64 },
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "coins": { "type": "number" },
+        "packsCount": { "type": "number" },
+        "pastedStickers": { "type": "array" },
+        "duplicates": { "type": "object" },
+        "redeemedCodes": { "type": "array" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["username", "role", "coins", "packsCount", "pastedStickers", "duplicates", "redeemedCodes", "createdAt"]
+    },
+    "Sticker": {
+      "title": "Sticker",
+      "description": "Album cromo card definition.",
+      "type": "object",
+      "properties": {
+        "number": { "type": "number" },
+        "name": { "type": "string", "maxLength": 100 },
+        "category": { "type": "string", "maxLength": 100 },
+        "team": { "type": "string", "maxLength": 50 },
+        "position": { "type": "string", "maxLength": 50 },
+        "rarity": { "type": "string", "enum": ["comun", "rara", "dorada_holo"] },
+        "imageUrl": { "type": "string", "maxLength": 500 },
+        "stats": { "type": "object" }
+      },
+      "required": ["number", "name", "category", "team", "position", "rarity", "imageUrl"]
+    },
+    "TradeOffer": {
+      "title": "Trade Offer",
+      "description": "Public sticker trade offer on the marketplace.",
+      "type": "object",
+      "properties": {
+        "creatorUsername": { "type": "string", "maxLength": 64 },
+        "offeredStickerNumber": { "type": "number" },
+        "requestedStickerNumber": { "type": "number" },
+        "status": { "type": "string", "enum": ["active", "completed", "cancelled"] },
+        "completedBy": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["creatorUsername", "offeredStickerNumber", "requestedStickerNumber", "status", "createdAt"]
+    },
+    "RedeemCode": {
+      "title": "Redeemable Code",
+      "description": "Promotional code for redeeming packs and coins.",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "maxLength": 32 },
+        "rewardPacks": { "type": "number" },
+        "rewardCoins": { "type": "number" },
+        "rewardStickerNumber": { "type": "number" },
+        "maxUses": { "type": "number" },
+        "timesUsed": { "type": "number" },
+        "description": { "type": "string", "maxLength": 200 }
+      },
+      "required": ["code", "rewardPacks", "rewardCoins", "maxUses", "timesUsed", "description"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profile collection."
+    },
+    "/stickers/{stickerId}": {
+      "schema": { "$ref": "#/entities/Sticker" },
+      "description": "Sticker catalog."
+    },
+    "/trades/{tradeId}": {
+      "schema": { "$ref": "#/entities/TradeOffer" },
+      "description": "Public marketplace trades."
+    },
+    "/codes/{codeId}": {
+      "schema": { "$ref": "#/entities/RedeemCode" },
+      "description": "Redeemable promo codes."
+    }
+  }
+}

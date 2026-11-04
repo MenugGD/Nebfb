@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer utilities {
+  .font-display {
+    font-family: 'Outfit', sans-serif;
+  }
+}
+
+@keyframes holographic-shine {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animate-holo {
+  background: linear-gradient(
+    115deg,
+    rgba(255, 215, 0, 0.4) 0%,
+    rgba(255, 0, 128, 0.4) 25%,
+    rgba(0, 255, 255, 0.4) 50%,
+    rgba(128, 0, 255, 0.4) 75%,
+    rgba(255, 215, 0, 0.4) 100%
+  );
+  background-size: 200% 200%;
+  animation: holographic-shine 4s ease infinite;
+}
+
+.holo-card-border {
+  border: 2px solid transparent;
+  border-image: linear-gradient(135deg, #ffd700, #ff007f, #00ffff) 1;
+}
+

@@ -1,0 +1,6 @@
+{
+  "name": "Álbum de Cromos Mundial 2026",
+  "description": "Álbum de estampas interactivo estilo Mundial con sobres, intercambio en línea, códigos canjeables y panel de administración.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
