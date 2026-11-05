@@ -198,58 +198,73 @@ export const Navbar: React.FC<NavbarProps> = ({
       <div className="md:hidden flex items-center justify-around bg-slate-950 py-2 border-t border-slate-800 text-xs font-medium overflow-x-auto px-2">
         <button
           onClick={() => setActiveTab('album')}
-          className={`flex flex-col items-center gap-1 px-3 py-1 rounded-lg ${
+          className={`flex flex-col items-center gap-1 px-2 py-1 rounded-lg shrink-0 ${
             activeTab === 'album' ? 'text-amber-400 font-bold' : 'text-slate-400'
           }`}
         >
           <Trophy className="w-4 h-4" />
-          Álbum
+          <span>Álbum</span>
         </button>
+
         <button
           onClick={() => setActiveTab('packs')}
-          className={`flex flex-col items-center gap-1 px-3 py-1 rounded-lg ${
+          className={`flex flex-col items-center gap-1 px-2 py-1 rounded-lg shrink-0 ${
             activeTab === 'packs' ? 'text-amber-400 font-bold' : 'text-slate-400'
           }`}
         >
           <Package className="w-4 h-4" />
-          Sobres
+          <span>Sobres</span>
         </button>
+
+        <button
+          onClick={() => setActiveTab('minigame')}
+          className={`flex flex-col items-center gap-1 px-2 py-1 rounded-lg shrink-0 ${
+            activeTab === 'minigame' ? 'text-emerald-400 font-bold' : 'text-slate-400'
+          }`}
+        >
+          <Gamepad2 className="w-4 h-4 text-emerald-400" />
+          <span>Minijuegos</span>
+        </button>
+
         <button
           onClick={() => setActiveTab('inventory')}
-          className={`flex flex-col items-center gap-1 px-3 py-1 rounded-lg ${
+          className={`flex flex-col items-center gap-1 px-2 py-1 rounded-lg shrink-0 ${
             activeTab === 'inventory' ? 'text-amber-400 font-bold' : 'text-slate-400'
           }`}
         >
           <Layers className="w-4 h-4" />
-          Repetidas
+          <span>Repetidas</span>
         </button>
+
         <button
           onClick={() => setActiveTab('trades')}
-          className={`flex flex-col items-center gap-1 px-3 py-1 rounded-lg ${
+          className={`flex flex-col items-center gap-1 px-2 py-1 rounded-lg shrink-0 ${
             activeTab === 'trades' ? 'text-amber-400 font-bold' : 'text-slate-400'
           }`}
         >
           <RefreshCw className="w-4 h-4" />
-          Trueque
+          <span>Trueque</span>
         </button>
+
         <button
           onClick={() => setActiveTab('codes')}
-          className={`flex flex-col items-center gap-1 px-3 py-1 rounded-lg ${
+          className={`flex flex-col items-center gap-1 px-2 py-1 rounded-lg shrink-0 ${
             activeTab === 'codes' ? 'text-amber-400 font-bold' : 'text-slate-400'
           }`}
         >
           <KeyRound className="w-4 h-4" />
-          Códigos
+          <span>Códigos</span>
         </button>
+
         {user?.role === 'admin' && (
           <button
             onClick={() => setActiveTab('admin')}
-            className={`flex flex-col items-center gap-1 px-3 py-1 rounded-lg ${
+            className={`flex flex-col items-center gap-1 px-2 py-1 rounded-lg shrink-0 ${
               activeTab === 'admin' ? 'text-rose-400 font-bold' : 'text-rose-500/70'
             }`}
           >
             <ShieldAlert className="w-4 h-4" />
-            Admin
+            <span>Admin</span>
           </button>
         )}
       </div>

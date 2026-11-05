@@ -3,6 +3,7 @@ import { Sticker, User } from '../types';
 import { sounds } from '../utils/audio';
 import confetti from 'canvas-confetti';
 import { Package, Sparkles, ShoppingBag, Coins, RefreshCw, CheckCircle2, Star, ArrowRight } from 'lucide-react';
+import { getCardThemeStyle } from '../utils/cardThemes';
 
 interface PackOpenerProps {
   user: User | null;
@@ -218,58 +219,59 @@ export const PackOpener: React.FC<PackOpenerProps> = ({
                   <div
                     key={`${sticker.id}_${idx}`}
                     onClick={() => handleCardFlip(idx, sticker)}
-                    className="relative h-64 cursor-pointer perspective-1000"
+                    className="relative h-64 cursor-pointer [perspective:1000px]"
                   >
-                    <div className={`w-full h-full duration-500 transition-all transform-style-3d ${
-                      isFlipped ? 'rotate-y-180' : 'hover:scale-105'
+                    <div className={`w-full h-full duration-700 transition-transform [transform-style:preserve-3d] ${
+                      isFlipped ? '[transform:rotateY(180deg)]' : 'hover:scale-105 shadow-xl'
                     }`}>
                       
-                      {/* Card Back (Foil Envelope Pattern) */}
-                      {!isFlipped ? (
-                        <div className="w-full h-full rounded-2xl bg-gradient-to-br from-amber-600 via-slate-900 to-amber-900 border-2 border-amber-400/80 p-4 flex flex-col items-center justify-center text-center shadow-xl">
-                          <div className="w-12 h-12 rounded-full bg-slate-950/80 text-amber-400 flex items-center justify-center mb-3 shadow">
-                            <Package className="w-6 h-6" />
-                          </div>
-                          <span className="font-display font-extrabold text-xs text-amber-200 uppercase tracking-widest">
-                            PANINI 2026
-                          </span>
-                          <span className="text-[10px] text-amber-400/80 font-mono mt-1">Toca para voltear</span>
+                      {/* Card Back (Foil Envelope Pattern - Visible before flip) */}
+                      <div className="absolute inset-0 w-full h-full rounded-2xl bg-gradient-to-br from-amber-600 via-slate-900 to-amber-900 border-2 border-amber-400/80 p-4 flex flex-col items-center justify-center text-center shadow-xl [backface-visibility:hidden]">
+                        <div className="w-12 h-12 rounded-full bg-slate-950/80 text-amber-400 flex items-center justify-center mb-3 shadow">
+                          <Package className="w-6 h-6" />
                         </div>
-                      ) : (
-                        /* Card Front (Sticker Revealed) */
-                        <div className={`w-full h-full rounded-2xl p-3 flex flex-col justify-between border shadow-2xl ${
+                        <span className="font-display font-extrabold text-xs text-amber-200 uppercase tracking-widest">
+                          PANINI 2026
+                        </span>
+                        <span className="text-[10px] text-amber-400/80 font-mono mt-1">Toca para voltear</span>
+                      </div>
+
+                      {/* Card Front (Sticker Revealed - Rotated 180deg so when container flips 180deg it displays right-side up!) */}
+                      <div
+                        style={getCardThemeStyle(sticker)}
+                        className={`absolute inset-0 w-full h-full rounded-2xl p-3 flex flex-col justify-between border shadow-2xl [backface-visibility:hidden] [transform:rotateY(180deg)] ${
                           isHolo
-                            ? 'bg-slate-900 border-amber-400 animate-holo'
-                            : 'bg-slate-900 border-slate-700'
-                        }`}>
-                          <div className="flex items-center justify-between">
-                            <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-950 text-amber-400 border border-slate-800">
-                              #{String(sticker.number).padStart(3, '0')}
+                            ? 'border-amber-400 ring-2 ring-amber-400 animate-holo'
+                            : 'border-slate-700/80'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between z-10">
+                          <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-950/90 text-amber-400 border border-slate-800">
+                            #{String(sticker.number).padStart(3, '0')}
+                          </span>
+                          {isHolo && (
+                            <span className="text-[10px] font-extrabold bg-amber-500 text-slate-950 px-2 py-0.5 rounded uppercase shadow">
+                              Holo
                             </span>
-                            {isHolo && (
-                              <span className="text-[10px] font-extrabold bg-amber-500 text-slate-950 px-2 py-0.5 rounded uppercase">
-                                Holo
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="w-full h-32 rounded-xl overflow-hidden my-1 shadow-md">
-                            <img
-                              src={sticker.imageUrl}
-                              alt={sticker.name}
-                              className="w-full h-full object-cover rounded-xl"
-                            />
-                          </div>
-
-                          <div>
-                            <h4 className="font-display font-bold text-xs text-white truncate">{sticker.name}</h4>
-                            <p className="text-[11px] text-slate-400 flex justify-between mt-0.5">
-                              <span>{sticker.team}</span>
-                              <span className="text-amber-400 font-medium">{sticker.position}</span>
-                            </p>
-                          </div>
+                          )}
                         </div>
-                      )}
+
+                        <div className="w-full h-32 rounded-xl overflow-hidden my-1 shadow-md z-10">
+                          <img
+                            src={sticker.imageUrl}
+                            alt={sticker.name}
+                            className="w-full h-full object-cover rounded-xl"
+                          />
+                        </div>
+
+                        <div className="z-10 bg-slate-950/90 p-2 rounded-xl border border-slate-800">
+                          <h4 className="font-display font-bold text-xs text-white truncate">{sticker.name}</h4>
+                          <p className="text-[11px] text-amber-300 flex justify-between mt-0.5">
+                            <span>{sticker.team}</span>
+                            <span className="text-amber-400 font-medium">{sticker.position}</span>
+                          </p>
+                        </div>
+                      </div>
 
                     </div>
                   </div>
