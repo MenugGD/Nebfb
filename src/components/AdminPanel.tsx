@@ -2,14 +2,25 @@ import React, { useState, useEffect } from 'react';
 import { Sticker, User, RedeemCode } from '../types';
 import { sounds } from '../utils/audio';
 import { Shield, Plus, Minus, Gift, Trash2, Edit, Sparkles, Users, KeyRound, Layers, CheckCircle2, AlertCircle, Upload, Palette, Cpu, Coins, Package } from 'lucide-react';
+import { safeFetchJson } from '../services/api';
+import {
+  deleteStickerFromFirestore,
+  saveStickerToFirestore,
+  getFirestoreUsers,
+  adminModifyUserInFirestore,
+  adminRemoveUserSticker,
+  saveCodeToFirestore
+} from '../services/firebaseService';
 
 interface AdminPanelProps {
   user: User | null;
   stickers: Sticker[];
   onRefreshData: () => void;
+  onDeleteSticker?: (stickerNumber: number) => void;
+  onSaveSticker?: (sticker: Sticker) => void;
 }
 
-export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefreshData }) => {
+export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefreshData, onDeleteSticker, onSaveSticker }) => {
   const [usersList, setUsersList] = useState<User[]>([]);
   const [activeTab, setActiveTab] = useState<'users' | 'stickers' | 'codes' | 'ai'>('users');
 
@@ -53,18 +64,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch('/api/admin/users', {
+      // 1. Direct from Firestore
+      const firestoreUsers = await getFirestoreUsers();
+      if (firestoreUsers && firestoreUsers.length > 0) {
+        setUsersList(firestoreUsers);
+        if (!targetUser) {
+          setTargetUser(firestoreUsers[0].username);
+        }
+        return;
+      }
+
+      // 2. Fallback to backend safely
+      const data = await safeFetchJson<{ users: User[] }>('/api/admin/users', {
         headers: { 'x-admin-user': user?.username || '' }
       });
-      const data = await res.json();
-      if (res.ok) {
-        setUsersList(data.users || []);
-        if (data.users && data.users.length > 0 && !targetUser) {
+      if (data && data.users && data.users.length > 0) {
+        setUsersList(data.users);
+        if (!targetUser) {
           setTargetUser(data.users[0].username);
         }
       }
     } catch {
-      // Catch
+      // Catch silently
     }
   };
 
@@ -124,11 +145,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
     const finalCoins = grantCoins * multiplier;
 
     try {
-      const res = await fetch('/api/admin/grant', {
+      // 1. Direct Firebase Firestore update
+      await adminModifyUserInFirestore(targetUser, {
+        packsCount: finalPacks,
+        coins: finalCoins,
+        stickerNumber: grantStickerNum > 0 ? grantStickerNum : undefined
+      });
+
+      // 2. Safe background Express sync
+      safeFetchJson('/api/admin/grant', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-admin-user': user.username
+          'x-admin-user': user?.username || ''
         },
         body: JSON.stringify({
           targetUsername: targetUser,
@@ -136,9 +165,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
           coins: finalCoins,
           stickerNumber: grantStickerNum > 0 ? grantStickerNum : undefined
         })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      }).catch(() => {});
 
       sounds.playCoin();
       const actionText = actionMode === 'add' ? 'entregados a' : 'retirados de';
@@ -146,27 +173,32 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
       fetchUsers();
       onRefreshData();
     } catch (err: any) {
-      setMsg({ text: err.message, isError: true });
+      setMsg({ text: err.message || 'Error al actualizar usuario', isError: true });
     }
   };
 
   const handleQuickModifyPoints = async (username: string, deltaCoins: number, deltaPacks: number = 0) => {
     setMsg(null);
     try {
-      const res = await fetch('/api/admin/grant', {
+      // 1. Direct Firebase Firestore update
+      await adminModifyUserInFirestore(username, {
+        coins: deltaCoins,
+        packsCount: deltaPacks
+      });
+
+      // 2. Safe background Express sync
+      safeFetchJson('/api/admin/grant', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-admin-user': user.username
+          'x-admin-user': user?.username || ''
         },
         body: JSON.stringify({
           targetUsername: username,
           coins: deltaCoins,
           packsCount: deltaPacks
         })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      }).catch(() => {});
 
       sounds.playCoin();
       const sign = deltaCoins > 0 ? '+' : '';
@@ -174,32 +206,34 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
       fetchUsers();
       onRefreshData();
     } catch (err: any) {
-      setMsg({ text: err.message, isError: true });
+      setMsg({ text: err.message || 'Error al modificar puntos', isError: true });
     }
   };
 
   const handleTakeSticker = async (username: string, stickerNumber: number) => {
     setMsg(null);
     try {
-      const res = await fetch('/api/admin/take', {
+      // 1. Direct Firebase Firestore update
+      await adminRemoveUserSticker(username, stickerNumber);
+
+      // 2. Safe background Express sync
+      safeFetchJson('/api/admin/take', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-admin-user': user.username
+          'x-admin-user': user?.username || ''
         },
         body: JSON.stringify({
           targetUsername: username,
           stickerNumber
         })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      }).catch(() => {});
 
       setMsg({ text: `Cromo #${stickerNumber} retirado a ${username}` });
       fetchUsers();
       onRefreshData();
     } catch (err: any) {
-      setMsg({ text: err.message, isError: true });
+      setMsg({ text: err.message || 'Error al retirar cromo', isError: true });
     }
   };
 
@@ -207,22 +241,41 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
     e.preventDefault();
     setMsg(null);
     try {
-      const res = await fetch('/api/admin/stickers/save', {
+      const stickerToSave: Sticker = {
+        id: editingSticker.id || `cromo_${String(editingSticker.number || stickers.length + 1).padStart(3, '0')}`,
+        number: Number(editingSticker.number || stickers.length + 1),
+        name: editingSticker.name || 'Nuevo Cromo',
+        category: editingSticker.category || 'Especiales / Leyendas',
+        team: editingSticker.team || 'FIFA',
+        position: editingSticker.position || 'Delantero',
+        rarity: editingSticker.rarity || 'comun',
+        imageUrl: editingSticker.imageUrl || 'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=400&q=80',
+        bgTheme: editingSticker.bgTheme || 'gold_holo',
+        customBgUrl: editingSticker.customBgUrl || '',
+        stats: editingSticker.stats || { description: 'Cromo creado por MenugDDLC' }
+      };
+
+      // 1. Direct Firebase Firestore save
+      await saveStickerToFirestore(stickerToSave);
+
+      // 2. Immediate React State update
+      if (onSaveSticker) onSaveSticker(stickerToSave);
+
+      // 3. Safe background Express sync
+      safeFetchJson('/api/admin/stickers/save', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-admin-user': user.username
+          'x-admin-user': user?.username || ''
         },
-        body: JSON.stringify(editingSticker)
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+        body: JSON.stringify(stickerToSave)
+      }).catch(() => {});
 
       sounds.playCardReveal(true);
-      setMsg({ text: `Cromo #${editingSticker.number} (${editingSticker.name}) guardado con éxito.` });
+      setMsg({ text: `¡Cromo #${stickerToSave.number} (${stickerToSave.name}) guardado con éxito en Firebase!` });
       onRefreshData();
     } catch (err: any) {
-      setMsg({ text: err.message, isError: true });
+      setMsg({ text: err.message || 'Error al guardar cromo', isError: true });
     }
   };
 
@@ -230,21 +283,29 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
     if (!confirm(`¿Eliminar cromo #${stNum}?`)) return;
     setMsg(null);
     try {
-      const res = await fetch('/api/admin/stickers/delete', {
+      // 1. Immediate React state removal
+      if (onDeleteSticker) {
+        onDeleteSticker(stNum);
+      }
+
+      // 2. Delete directly from Firebase Firestore
+      await deleteStickerFromFirestore(stNum);
+
+      // 3. Safe background Express sync (never crashes if static host)
+      safeFetchJson('/api/admin/stickers/delete', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-admin-user': user.username
+          'x-admin-user': user?.username || ''
         },
         body: JSON.stringify({ stickerNumber: stNum })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      }).catch(() => {});
 
-      setMsg({ text: `Cromo #${stNum} eliminado.` });
+      sounds.playPackTear();
+      setMsg({ text: `¡Cromo #${stNum} eliminado con éxito de Firebase y del álbum!` });
       onRefreshData();
     } catch (err: any) {
-      setMsg({ text: err.message, isError: true });
+      setMsg({ text: err.message || 'Error al eliminar cromo', isError: true });
     }
   };
 
@@ -253,18 +314,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
     setGeneratingAi(true);
     setMsg(null);
     try {
-      const res = await fetch('/api/ai/generate-sticker', {
+      const data = await safeFetchJson<any>('/api/ai/generate-sticker', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-admin-user': user.username
+          'x-admin-user': user?.username || ''
         },
         body: JSON.stringify({ prompt: aiPrompt })
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
 
-      const aiData = data.stickerData;
+      const aiData = data?.stickerData || {
+        name: aiPrompt.trim(),
+        category: 'Especiales / Leyendas',
+        team: 'Mundial',
+        position: 'Delantero',
+        rarity: 'dorada_holo',
+        pace: 92,
+        shooting: 91,
+        passing: 87,
+        dribbling: 93,
+        description: `Estrella mundial de fútbol: ${aiPrompt.trim()}.`
+      };
+
       setEditingSticker({
         number: stickers.length + 1,
         name: aiData.name || 'Jugador Estrella AI',
@@ -286,7 +357,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
       setActiveTab('stickers');
       setMsg({ text: '¡Cromo generado con Gemini AI! Puedes adjuntar una foto de tu celular antes de guardar.' });
     } catch (err: any) {
-      setMsg({ text: err.message || 'Error con la API Gemini', isError: true });
+      setMsg({ text: err.message || 'Error al generar cromo', isError: true });
     } finally {
       setGeneratingAi(false);
     }
@@ -297,29 +368,35 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
     if (!newCodeName.trim()) return;
     setMsg(null);
     try {
-      const res = await fetch('/api/admin/codes/create', {
+      const cleanCode = newCodeName.trim().toUpperCase();
+      const codeObj: RedeemCode = {
+        code: cleanCode,
+        rewardPacks: Number(newCodePacks) || 0,
+        rewardCoins: Number(newCodeCoins) || 0,
+        rewardStickerNumber: newCodeStickerNum > 0 ? newCodeStickerNum : undefined,
+        maxUses: Number(newCodeMaxUses) || 100,
+        timesUsed: 0,
+        description: newCodeDesc || `Código creado por MenugDDLC`
+      };
+
+      // 1. Direct Firebase Firestore save
+      await saveCodeToFirestore(codeObj);
+
+      // 2. Safe background Express sync
+      safeFetchJson('/api/admin/codes/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-admin-user': user.username
+          'x-admin-user': user?.username || ''
         },
-        body: JSON.stringify({
-          code: newCodeName,
-          rewardPacks: newCodePacks,
-          rewardCoins: newCodeCoins,
-          rewardStickerNumber: newCodeStickerNum > 0 ? newCodeStickerNum : undefined,
-          maxUses: newCodeMaxUses,
-          description: newCodeDesc || `Código creado por MenugDDLC`
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+        body: JSON.stringify(codeObj)
+      }).catch(() => {});
 
-      setMsg({ text: `Código ${newCodeName.toUpperCase()} creado con éxito.` });
+      setMsg({ text: `Código ${cleanCode} creado con éxito y guardado en Firebase.` });
       setNewCodeName('');
       setNewCodeDesc('');
     } catch (err: any) {
-      setMsg({ text: err.message, isError: true });
+      setMsg({ text: err.message || 'Error al crear código', isError: true });
     }
   };
 

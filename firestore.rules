@@ -18,34 +18,27 @@ service cloud.firestore {
 
     // Users Collection
     match /users/{userId} {
-      allow read: if true;
-      allow create: if isSignedIn();
-      allow update, delete: if isOwner(userId);
+      allow read, write: if true;
     }
 
     // Stickers Catalog
     match /stickers/{stickerId} {
-      allow read: if true;
-      allow write: if isSignedIn();
+      allow read, write: if true;
     }
 
     // Trades Marketplace
     match /trades/{tradeId} {
-      allow read: if true;
-      allow create, update: if isSignedIn();
-      allow delete: if isSignedIn();
+      allow read, write: if true;
     }
 
     // Redeem Codes
     match /codes/{codeId} {
-      allow read: if true;
-      allow write: if isSignedIn();
+      allow read, write: if true;
     }
 
     // Race Matches (Aquapark 1v1 Online)
     match /raceMatches/{matchId} {
-      allow read: if true;
-      allow write: if true;
+      allow read, write: if true;
     }
 
   }

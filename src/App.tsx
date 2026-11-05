@@ -16,8 +16,14 @@ import {
   testFirestoreConnection,
   initializeFirestoreSeed,
   getFirestoreStickers,
+  subscribeFirestoreStickers,
+  getFirestoreUser,
+  subscribeFirestoreUser,
   updateUserInFirestore,
-  subscribeFirestoreTrades
+  subscribeFirestoreTrades,
+  createFirestoreTrade,
+  updateFirestoreTrade,
+  deleteFirestoreTrade
 } from './services/firebaseService';
 
 export default function App() {
@@ -29,29 +35,71 @@ export default function App() {
   const [preSelectedTradeOffered, setPreSelectedTradeOffered] = useState<number | null>(null);
 
   useEffect(() => {
-    checkStoredAuth();
     testFirestoreConnection();
     initializeFirestoreSeed();
-    loadStickersFromFirestore();
+    checkStoredAuth();
 
-    const unsubscribe = subscribeFirestoreTrades((liveTrades) => {
+    // 1. Live real-time subscription to stickers catalog
+    const unsubStickers = subscribeFirestoreStickers((liveStickers) => {
+      setStickers(liveStickers);
+    });
+
+    // 2. Live real-time subscription to trades marketplace
+    const unsubTrades = subscribeFirestoreTrades((liveTrades) => {
       setTrades(liveTrades);
     });
 
     return () => {
-      if (typeof unsubscribe === 'function') unsubscribe();
+      if (typeof unsubStickers === 'function') unsubStickers();
+      if (typeof unsubTrades === 'function') unsubTrades();
     };
   }, []);
+
+  // Live real-time subscription to current user in Firestore
+  useEffect(() => {
+    if (!user?.username) return;
+
+    // Immediately fetch fresh state from Firestore
+    getFirestoreUser(user.username).then(remoteUser => {
+      if (remoteUser) {
+        setUser(remoteUser);
+        localStorage.setItem('album_user', JSON.stringify(remoteUser));
+      }
+    });
+
+    // Live sync whenever points/packs/stickers change on Vercel or anywhere
+    const unsubUser = subscribeFirestoreUser(user.username, (liveUser) => {
+      if (liveUser) {
+        setUser(liveUser);
+        localStorage.setItem('album_user', JSON.stringify(liveUser));
+      }
+    });
+
+    return () => {
+      if (typeof unsubUser === 'function') unsubUser();
+    };
+  }, [user?.username]);
 
   const loadStickersFromFirestore = async () => {
     try {
       const list = await getFirestoreStickers();
       if (list && list.length > 0) {
-        setStickers(list);
+        setStickers(list.sort((a, b) => a.number - b.number));
       }
     } catch {
       // Keep default
     }
+  };
+
+  const handleDeleteSticker = (stNum: number) => {
+    setStickers(prev => prev.filter(s => s.number !== stNum));
+  };
+
+  const handleSaveSticker = (newSticker: Sticker) => {
+    setStickers(prev => {
+      const filtered = prev.filter(s => s.number !== newSticker.number);
+      return [...filtered, newSticker].sort((a, b) => a.number - b.number);
+    });
   };
 
   const checkStoredAuth = () => {
@@ -196,6 +244,7 @@ export default function App() {
       createdAt: new Date().toISOString()
     };
     setTrades(prev => [newTrade, ...prev]);
+    await createFirestoreTrade(newTrade);
   };
 
   const handleAcceptTrade = async (tradeId: string) => {
@@ -215,11 +264,13 @@ export default function App() {
 
     saveUserToFirebase(updatedUser);
     setTrades(prev => prev.map(t => t.id === tradeId ? { ...t, status: 'completed' as const, completedBy: user.username } : t));
+    await updateFirestoreTrade(tradeId, { status: 'completed', completedBy: user.username });
   };
 
   const handleCancelTrade = async (tradeId: string) => {
     if (!user) return;
     setTrades(prev => prev.filter(t => t.id !== tradeId));
+    await updateFirestoreTrade(tradeId, { status: 'cancelled' });
   };
 
   const handleOpenTradeFromInventory = (offeredNum: number) => {
@@ -410,6 +461,8 @@ export default function App() {
             onRefreshData={() => {
               loadStickersFromFirestore();
             }}
+            onDeleteSticker={handleDeleteSticker}
+            onSaveSticker={handleSaveSticker}
           />
         )}
       </main>
