@@ -1,6 +1,7 @@
 import React from 'react';
 import { Sticker, User } from '../types';
 import { Layers, Plus, RefreshCw, Star, ArrowRight } from 'lucide-react';
+import { getCardThemeStyle } from '../utils/cardThemes';
 
 interface DuplicatesInventoryProps {
   user: User | null;
@@ -95,7 +96,8 @@ export const DuplicatesInventory: React.FC<DuplicatesInventoryProps> = ({
             return (
               <div
                 key={sticker.id}
-                className={`rounded-2xl p-3 border flex flex-col justify-between min-h-[280px] bg-slate-900 ${
+                style={getCardThemeStyle(sticker)}
+                className={`rounded-2xl p-3 border flex flex-col justify-between min-h-[280px] overflow-hidden ${
                   isHolo ? 'border-amber-400/80 shadow-lg shadow-amber-500/10' : 'border-slate-800'
                 }`}
               >

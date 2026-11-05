@@ -3,6 +3,7 @@ import { Sticker, User } from '../types';
 import { sounds } from '../utils/audio';
 import confetti from 'canvas-confetti';
 import { Trophy, Sparkles, CheckCircle2, Star, Plus, ChevronRight } from 'lucide-react';
+import { getCardThemeStyle } from '../utils/cardThemes';
 
 interface AlbumViewProps {
   stickers: Sticker[];
@@ -78,26 +79,6 @@ export const AlbumView: React.FC<AlbumViewProps> = ({
     } finally {
       setStickingNumber(null);
     }
-  };
-
-  // Helper to resolve card background theme style
-  const getCardBgStyle = (sticker: Sticker) => {
-    if (sticker.bgTheme === 'custom_bg' && sticker.customBgUrl) {
-      return { backgroundImage: `url(${sticker.customBgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' };
-    }
-    if (sticker.bgTheme === 'emerald_stadium') {
-      return { background: 'linear-gradient(135deg, #064e3b 0%, #022c22 100%)' };
-    }
-    if (sticker.bgTheme === 'cosmic_purple') {
-      return { background: 'linear-gradient(135deg, #4c1d95 0%, #1e1b4b 100%)' };
-    }
-    if (sticker.bgTheme === 'ruby_fire') {
-      return { background: 'linear-gradient(135deg, #881337 0%, #450a0a 100%)' };
-    }
-    if (sticker.bgTheme === 'silver_metallic') {
-      return { background: 'linear-gradient(135deg, #475569 0%, #0f172a 100%)' };
-    }
-    return {};
   };
 
   const totalAlbumStickers = stickers.length;
@@ -207,8 +188,8 @@ export const AlbumView: React.FC<AlbumViewProps> = ({
             <div
               key={sticker.id}
               onClick={() => setSelectedStickerDetail(sticker)}
-              style={isPasted ? getCardBgStyle(sticker) : {}}
-              className={`group relative rounded-2xl p-3 border transition-all duration-300 cursor-pointer flex flex-col justify-between min-h-[260px] ${
+              style={isPasted ? getCardThemeStyle(sticker) : {}}
+              className={`group relative rounded-2xl p-3 border transition-all duration-300 cursor-pointer flex flex-col justify-between min-h-[260px] overflow-hidden ${
                 isPasted
                   ? isHolo
                     ? 'bg-slate-900 border-amber-400/80 shadow-xl shadow-amber-500/10 hover:scale-[1.02]'
@@ -324,9 +305,9 @@ export const AlbumView: React.FC<AlbumViewProps> = ({
             </button>
 
             <div
-              style={getCardBgStyle(selectedStickerDetail)}
-              className={`p-6 relative ${
-                selectedStickerDetail.rarity === 'dorada_holo' ? 'animate-holo' : 'bg-slate-900'
+              style={getCardThemeStyle(selectedStickerDetail)}
+              className={`p-6 relative rounded-3xl ${
+                selectedStickerDetail.rarity === 'dorada_holo' ? 'animate-holo' : ''
               }`}
             >
               <div className="flex items-center justify-between mb-4">

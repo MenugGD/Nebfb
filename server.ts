@@ -10,7 +10,8 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Generated asset paths as relative URL strings
 const TROPHY_IMG = '/src/assets/images/trophy_special_sticker_1793815063715.jpg';
@@ -1194,6 +1195,15 @@ Responde estrictamente en formato JSON válido con las siguientes claves exactas
     const errorMsg = err instanceof Error ? err.message : 'Error al conectar con Gemini AI';
     return res.status(500).json({ error: errorMsg });
   }
+});
+
+// Express Error Handler Middleware for Payload or Route Errors
+app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  if (err?.type === 'entity.too.large' || err?.status === 413) {
+    return res.status(413).json({ error: 'La imagen o datos enviados son demasiado grandes. Por favor selecciona una imagen más liviana.' });
+  }
+  console.error('[Server Error Notice]:', err?.message || err);
+  return res.status(err?.status || 500).json({ error: err?.message || 'Error interno del servidor' });
 });
 
 // Vite Server Mounting in Dev Mode

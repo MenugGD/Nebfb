@@ -9,7 +9,7 @@ export interface Sticker {
   position: string;
   rarity: StickerRarity;
   imageUrl: string;
-  bgTheme?: 'gold_holo' | 'emerald_stadium' | 'cosmic_purple' | 'ruby_fire' | 'silver_metallic' | 'custom_bg';
+  bgTheme?: string;
   customBgUrl?: string;
   stats?: {
     pace?: number;

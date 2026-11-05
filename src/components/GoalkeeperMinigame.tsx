@@ -13,6 +13,7 @@ type Direction = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'ce
 const STADIUM_BG = '/src/assets/images/stadium_hero_bg_1793815063010.jpg';
 
 export const GoalkeeperMinigame: React.FC<GoalkeeperMinigameProps> = ({ onEarnPoints, userPoints }) => {
+  const [difficulty, setDifficulty] = useState<'facil' | 'normal' | 'dificil'>('normal');
   const [gameState, setGameState] = useState<'READY' | 'SHOOTING' | 'RESULT'>('READY');
   const [selectedDir, setSelectedDir] = useState<Direction | null>(null);
   const [ballTarget, setBallTarget] = useState<Direction | null>(null);
@@ -34,22 +35,32 @@ export const GoalkeeperMinigame: React.FC<GoalkeeperMinigameProps> = ({ onEarnPo
     setSelectedDir(dir);
     setGameState('SHOOTING');
 
-    // AI striker chooses random shot direction
-    const allDirs: Direction[] = ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'center'];
-    const chosenShot = allDirs[Math.floor(Math.random() * allDirs.length)];
+    // AI striker shot selection based on difficulty
+    let candidateDirs: Direction[] = ['top-left', 'top-right', 'center', 'bottom-left', 'bottom-right'];
+    if (difficulty === 'facil') {
+      candidateDirs = ['top-left', 'top-right', 'center'];
+    }
+
+    const chosenShot = candidateDirs[Math.floor(Math.random() * candidateDirs.length)];
     setBallTarget(chosenShot);
 
     // Play kick audio sound
     sounds.playStickerSlap();
 
-    // After animation finishes (1.2s) evaluate result
+    // After animation finishes (1.0s - 1.2s) evaluate result
+    const animDelay = difficulty === 'dificil' ? 900 : 1200;
     setTimeout(async () => {
       const isSave = dir === chosenShot;
       setIsSaveSuccess(isSave);
 
+      let baseReward = 150;
+      if (difficulty === 'facil') baseReward = 100;
+      if (difficulty === 'normal') baseReward = 200;
+      if (difficulty === 'dificil') baseReward = 350;
+
       let reward = 25; // consolation reward
       if (isSave) {
-        reward = 150 + streak * 50;
+        reward = baseReward + streak * 50;
         setStreak(prev => prev + 1);
         sounds.playFanfare();
         confetti({
@@ -65,7 +76,7 @@ export const GoalkeeperMinigame: React.FC<GoalkeeperMinigameProps> = ({ onEarnPo
       setEarnedAmount(reward);
       await onEarnPoints(reward);
       setGameState('RESULT');
-    }, 1200);
+    }, animDelay);
   };
 
   const handlePlayAgain = () => {
@@ -141,11 +152,50 @@ export const GoalkeeperMinigame: React.FC<GoalkeeperMinigameProps> = ({ onEarnPo
           </p>
         </div>
 
-        <div className="flex items-center gap-3 bg-slate-950 px-4 py-2 rounded-2xl border border-slate-800 self-start sm:self-auto">
-          <Coins className="w-5 h-5 text-amber-400" />
-          <div>
-            <span className="text-[10px] text-slate-400 block font-semibold">TUS PUNTOS</span>
-            <span className="font-mono font-black text-amber-400 text-base">{userPoints} pts</span>
+        <div className="flex flex-col sm:flex-row items-center gap-3 self-start sm:self-auto">
+          {/* Difficulty Selector */}
+          <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-2xl border border-slate-800">
+            <button
+              type="button"
+              onClick={() => setDifficulty('facil')}
+              className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all ${
+                difficulty === 'facil'
+                  ? 'bg-emerald-500 text-slate-950 shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Fácil (+100)
+            </button>
+            <button
+              type="button"
+              onClick={() => setDifficulty('normal')}
+              className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all ${
+                difficulty === 'normal'
+                  ? 'bg-amber-500 text-slate-950 shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Normal (+200)
+            </button>
+            <button
+              type="button"
+              onClick={() => setDifficulty('dificil')}
+              className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all ${
+                difficulty === 'dificil'
+                  ? 'bg-rose-600 text-white shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Leyenda (+350)
+            </button>
+          </div>
+
+          <div className="flex items-center gap-3 bg-slate-950 px-4 py-2 rounded-2xl border border-slate-800">
+            <Coins className="w-5 h-5 text-amber-400" />
+            <div>
+              <span className="text-[10px] text-slate-400 block font-semibold">TUS PUNTOS</span>
+              <span className="font-mono font-black text-amber-400 text-base">{userPoints} pts</span>
+            </div>
           </div>
         </div>
       </div>

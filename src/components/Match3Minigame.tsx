@@ -22,6 +22,7 @@ const BOARD_SIZE = 7;
 const ALL_TYPES: TileType[] = ['ball', 'trophy', 'gloves', 'boots', 'card'];
 
 export const Match3Minigame: React.FC<Match3MinigameProps> = ({ onEarnPoints, userPoints }) => {
+  const [difficulty, setDifficulty] = useState<'facil' | 'normal' | 'dificil'>('normal');
   const [board, setBoard] = useState<TileType[][]>([]);
   const [selectedTile, setSelectedTile] = useState<{ r: number; c: number } | null>(null);
   const [score, setScore] = useState<number>(0);
@@ -53,7 +54,8 @@ export const Match3Minigame: React.FC<Match3MinigameProps> = ({ onEarnPoints, us
     const freshBoard = createBoard();
     setBoard(freshBoard);
     setScore(0);
-    setMovesLeft(15);
+    const initialMoves = difficulty === 'facil' ? 22 : difficulty === 'dificil' ? 10 : 15;
+    setMovesLeft(initialMoves);
     setSelectedTile(null);
     setGameState('PLAYING');
     sounds.playCoin();
@@ -163,7 +165,8 @@ export const Match3Minigame: React.FC<Match3MinigameProps> = ({ onEarnPoints, us
 
   const endGame = async (finalScore: number) => {
     setGameState('GAMEOVER');
-    const finalPoints = Math.round(finalScore * 0.6) + 60;
+    const multiplier = difficulty === 'facil' ? 0.5 : difficulty === 'dificil' ? 1.2 : 0.8;
+    const finalPoints = Math.round(finalScore * multiplier) + 80;
     setEarnedPoints(finalPoints);
 
     sounds.playFanfare();
@@ -194,11 +197,53 @@ export const Match3Minigame: React.FC<Match3MinigameProps> = ({ onEarnPoints, us
           </p>
         </div>
 
-        <div className="flex items-center gap-3 bg-slate-950 px-4 py-2 rounded-2xl border border-slate-800 shrink-0">
-          <Coins className="w-5 h-5 text-amber-400" />
-          <div>
-            <span className="text-[10px] text-slate-400 block font-semibold">TUS PUNTOS</span>
-            <span className="font-mono font-black text-amber-400 text-base">{userPoints} pts</span>
+        <div className="flex flex-col sm:flex-row items-center gap-3 self-start sm:self-auto">
+          {/* Difficulty Selector */}
+          <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-2xl border border-slate-800">
+            <button
+              type="button"
+              disabled={gameState === 'PLAYING'}
+              onClick={() => setDifficulty('facil')}
+              className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all ${
+                difficulty === 'facil'
+                  ? 'bg-emerald-500 text-slate-950 shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Fácil (22 mov.)
+            </button>
+            <button
+              type="button"
+              disabled={gameState === 'PLAYING'}
+              onClick={() => setDifficulty('normal')}
+              className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all ${
+                difficulty === 'normal'
+                  ? 'bg-amber-500 text-slate-950 shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Normal (15 mov.)
+            </button>
+            <button
+              type="button"
+              disabled={gameState === 'PLAYING'}
+              onClick={() => setDifficulty('dificil')}
+              className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all ${
+                difficulty === 'dificil'
+                  ? 'bg-rose-600 text-white shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Desafío (10 mov.)
+            </button>
+          </div>
+
+          <div className="flex items-center gap-3 bg-slate-950 px-4 py-2 rounded-2xl border border-slate-800 shrink-0">
+            <Coins className="w-5 h-5 text-amber-400" />
+            <div>
+              <span className="text-[10px] text-slate-400 block font-semibold">TUS PUNTOS</span>
+              <span className="font-mono font-black text-amber-400 text-base">{userPoints} pts</span>
+            </div>
           </div>
         </div>
       </div>

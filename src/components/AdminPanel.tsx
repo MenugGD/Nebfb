@@ -35,6 +35,8 @@ import {
   adminRemoveUserSticker,
   saveCodeToFirestore
 } from '../services/firebaseService';
+import { getCardThemeStyle, CARD_THEME_PRESETS } from '../utils/cardThemes';
+import { compressImageFile } from '../utils/imageCompressor';
 
 interface AdminPanelProps {
   user: User | null;
@@ -59,6 +61,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [activeTab, setActiveTab] = useState<'users' | 'stickers' | 'codes' | 'ai'>('users');
   const [selectedStickerNumbers, setSelectedStickerNumbers] = useState<number[]>([]);
   const [isDeletingBatch, setIsDeletingBatch] = useState<boolean>(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState<boolean>(false);
 
   // Grant / Take state
   const [targetUser, setTargetUser] = useState<string>('');
@@ -139,37 +142,55 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     );
   }
 
-  // File Upload Handlers
-  const handleStickerPhotoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // File Upload Handlers (with auto-compression for fast Firestore sync)
+  const handleStickerPhotoFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const result = event.target?.result as string;
-      if (result) {
-        setEditingSticker(prev => ({ ...prev, imageUrl: result }));
-      }
-    };
-    reader.readAsDataURL(file);
+    try {
+      const compressed = await compressImageFile(file, 800, 0.8);
+      setEditingSticker(prev => ({ ...prev, imageUrl: compressed }));
+    } catch {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const result = event.target?.result as string;
+        if (result) setEditingSticker(prev => ({ ...prev, imageUrl: result }));
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
-  const handleCustomBgFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCustomBgFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const result = event.target?.result as string;
-      if (result) {
-        setEditingSticker(prev => ({
-          ...prev,
-          bgTheme: 'custom_bg',
-          customBgUrl: result
-        }));
-      }
-    };
-    reader.readAsDataURL(file);
+    try {
+      const compressed = await compressImageFile(file, 800, 0.8);
+      setEditingSticker(prev => ({
+        ...prev,
+        bgTheme: 'custom_bg',
+        customBgUrl: compressed
+      }));
+    } catch {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const result = event.target?.result as string;
+        if (result) {
+          setEditingSticker(prev => ({
+            ...prev,
+            bgTheme: 'custom_bg',
+            customBgUrl: result
+          }));
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleStartEdit = (st: Sticker) => {
+    setEditingSticker({ ...st });
+    setIsEditModalOpen(true);
+    sounds.playCoin();
   };
 
   const handleGrantOrDeductSubmit = async (e: React.FormEvent) => {
@@ -277,12 +298,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     e.preventDefault();
     setMsg(null);
     try {
+      const isCreatingNew = !isEditModalOpen || !editingSticker.id;
+      const stNumber = Number(editingSticker.number) || stickers.length + 1;
+      const targetId = isCreatingNew
+        ? `cromo_${Date.now()}_${stNumber}`
+        : editingSticker.id!;
+
       const stickerToSave: Sticker = {
-        id: editingSticker.id || `cromo_${String(editingSticker.number || stickers.length + 1).padStart(3, '0')}`,
-        number: Number(editingSticker.number || stickers.length + 1),
-        name: editingSticker.name || 'Nuevo Cromo',
+        id: targetId,
+        number: stNumber,
+        name: editingSticker.name?.trim() || 'Nuevo Cromo',
         category: editingSticker.category || 'Especiales / Leyendas',
-        team: editingSticker.team || 'FIFA',
+        team: editingSticker.team?.trim() || 'FIFA',
         position: editingSticker.position || 'Delantero',
         rarity: editingSticker.rarity || 'comun',
         imageUrl: editingSticker.imageUrl || 'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=400&q=80',
@@ -309,6 +336,23 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
       sounds.playCardReveal(true);
       setMsg({ text: `¡Cromo #${stickerToSave.number} (${stickerToSave.name}) guardado con éxito en Firebase!` });
+      setIsEditModalOpen(false);
+
+      // Reset form state for creating the next new sticker
+      const nextNum = Math.max(0, ...stickers.map(s => s.number), stNumber) + 1;
+      setEditingSticker({
+        number: nextNum,
+        name: '',
+        category: 'Especiales / Leyendas',
+        team: 'FIFA',
+        position: 'Delantero',
+        rarity: 'comun',
+        imageUrl: 'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=400&q=80',
+        bgTheme: 'gold_holo',
+        customBgUrl: '',
+        stats: { description: 'Cromo creado por el Administrador' }
+      });
+
       onRefreshData();
     } catch (err: any) {
       setMsg({ text: err.message || 'Error al guardar cromo', isError: true });
@@ -853,20 +897,84 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
           <div className="lg:col-span-1 bg-slate-900/90 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
-            <h3 className="font-display font-extrabold text-base text-white">
-              {editingSticker.id ? 'Editar Cromo & Fondo' : 'Crear Cromo & Fondo'}
+            <h3 className="font-display font-extrabold text-base text-white flex items-center justify-between">
+              <span>Crear Nuevo Cromo</span>
+              <button
+                type="button"
+                onClick={() => setEditingSticker({
+                  id: undefined,
+                  number: (stickers.length > 0 ? Math.max(...stickers.map(s => s.number)) : 0) + 1,
+                  name: '',
+                  category: 'Especiales / Leyendas',
+                  team: 'FIFA',
+                  position: 'Delantero',
+                  rarity: 'comun',
+                  imageUrl: 'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=400&q=80',
+                  bgTheme: 'gold_holo',
+                  customBgUrl: '',
+                  stats: { description: 'Cromo creado por el Administrador' }
+                })}
+                className="text-[10px] text-amber-400 hover:bg-amber-500/20 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded font-mono font-bold transition-all"
+                title="Limpiar formulario para un nuevo cromo"
+              >
+                + Nuevo Slot #{(stickers.length > 0 ? Math.max(...stickers.map(s => s.number)) : 0) + 1}
+              </button>
             </h3>
 
-            <form onSubmit={handleSaveSticker} className="space-y-4">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-400 mb-1">Número de Slot</label>
-                <input
-                  type="number"
-                  required
-                  value={editingSticker.number || ''}
-                  onChange={e => setEditingSticker({ ...editingSticker, number: Number(e.target.value) })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white"
-                />
+            {/* Live Mini Preview */}
+            <div className="flex flex-col items-center py-1">
+              <div
+                style={getCardThemeStyle(editingSticker)}
+                className="w-full max-w-[200px] rounded-xl p-2.5 border-2 border-amber-400/80 shadow-xl flex flex-col justify-between min-h-[260px] relative overflow-hidden"
+              >
+                <div className="flex items-center justify-between z-10 text-[10px]">
+                  <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-slate-950 text-amber-400">
+                    #{editingSticker.number || stickers.length + 1}
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded bg-slate-950 text-slate-200 uppercase text-[9px] font-bold">
+                    {editingSticker.rarity || 'comun'}
+                  </span>
+                </div>
+                <div className="my-auto py-1 z-10">
+                  <div className="w-full h-28 rounded-lg overflow-hidden border border-slate-700/80 bg-slate-950/40">
+                    <img
+                      src={editingSticker.imageUrl || 'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=400&q=80'}
+                      alt="Vista previa"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                </div>
+                <div className="bg-slate-950/85 p-1.5 rounded-lg border border-slate-800 z-10">
+                  <h6 className="font-bold text-[11px] text-white truncate">{editingSticker.name || 'Nombre del Cromo'}</h6>
+                  <p className="text-[9px] text-amber-300">{editingSticker.team || 'Selección'} · {editingSticker.position || 'Delantero'}</p>
+                </div>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveSticker} className="space-y-3.5">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-400 mb-1">Slot #</label>
+                  <input
+                    type="number"
+                    required
+                    value={editingSticker.number || ''}
+                    onChange={e => setEditingSticker({ ...editingSticker, number: Number(e.target.value) })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-400 mb-1">Rareza</label>
+                  <select
+                    value={editingSticker.rarity || 'comun'}
+                    onChange={e => setEditingSticker({ ...editingSticker, rarity: e.target.value as any })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white"
+                  >
+                    <option value="comun">Común</option>
+                    <option value="rara">Rara</option>
+                    <option value="dorada_holo">Dorada Holo</option>
+                  </select>
+                </div>
               </div>
 
               <div>
@@ -874,61 +982,109 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <input
                   type="text"
                   required
+                  placeholder="ej. Erling Haaland"
                   value={editingSticker.name || ''}
                   onChange={e => setEditingSticker({ ...editingSticker, name: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white font-bold"
                 />
               </div>
 
-              <div className="p-3 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
-                <label className="block text-[11px] font-bold text-amber-400 flex items-center gap-1.5">
-                  <Upload className="w-4 h-4 text-amber-400" />
-                  <span>Subir Foto del Jugador (Celular / PC)</span>
-                </label>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-400 mb-1">Selección / Equipo</label>
+                  <input
+                    type="text"
+                    placeholder="ej. Noruega, FIFA"
+                    value={editingSticker.team || ''}
+                    onChange={e => setEditingSticker({ ...editingSticker, team: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-400 mb-1">Posición</label>
+                  <select
+                    value={editingSticker.position || 'Delantero'}
+                    onChange={e => setEditingSticker({ ...editingSticker, position: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white"
+                  >
+                    <option value="Delantero">Delantero</option>
+                    <option value="Mediocampista">Mediocampista</option>
+                    <option value="Defensa">Defensa</option>
+                    <option value="Portero">Portero</option>
+                    <option value="Escudo">Escudo</option>
+                    <option value="Trofeo">Trofeo</option>
+                    <option value="Estadio">Estadio</option>
+                  </select>
+                </div>
+              </div>
 
+              {/* Photo Upload */}
+              <div className="p-3 bg-slate-950 border border-slate-800 rounded-2xl space-y-1.5">
+                <label className="block text-[11px] font-bold text-amber-400 flex items-center gap-1.5">
+                  <Upload className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Foto del Jugador</span>
+                </label>
                 <input
                   type="file"
                   accept="image/*"
                   onChange={handleStickerPhotoFileUpload}
-                  className="text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-amber-500 file:text-slate-950 hover:file:bg-amber-400 cursor-pointer w-full"
+                  className="text-xs text-slate-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-[10px] file:font-bold file:bg-amber-500 file:text-slate-950 hover:file:bg-amber-400 cursor-pointer w-full"
                 />
               </div>
 
-              <div className="p-3 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
-                <label className="block text-[11px] font-bold text-emerald-400 flex items-center gap-1.5">
-                  <Palette className="w-4 h-4 text-emerald-400" />
-                  <span>Fondo de la Estampilla</span>
+              {/* Preset Background Gallery */}
+              <div className="p-3 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
+                <label className="block text-[11px] font-bold text-emerald-400 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Palette className="w-3.5 h-3.5" />
+                    <span>Fondos con Imagen Prestablecidos</span>
+                  </span>
+                  <span className="text-[9px] text-slate-500">Haz clic para elegir</span>
                 </label>
 
-                <select
-                  value={editingSticker.bgTheme || 'gold_holo'}
-                  onChange={e => setEditingSticker({ ...editingSticker, bgTheme: e.target.value as any })}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-xs text-white"
-                >
-                  <option value="gold_holo">Oro Holográfico Brillo</option>
-                  <option value="emerald_stadium">Estadio Esmeralda Nocturno</option>
-                  <option value="cosmic_purple">Púrpura Cósmico Estelar</option>
-                  <option value="ruby_fire">Fuego Rubí Pasión</option>
-                  <option value="silver_metallic">Plata Metalizada</option>
-                  <option value="custom_bg">Imagen Personalizada Subida</option>
-                </select>
+                <div className="grid grid-cols-2 gap-1.5 max-h-[160px] overflow-y-auto pr-1">
+                  {CARD_THEME_PRESETS.map(preset => {
+                    const isCurrent = editingSticker.bgTheme === preset.id && !editingSticker.customBgUrl;
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => setEditingSticker(prev => ({
+                          ...prev,
+                          bgTheme: preset.id,
+                          customBgUrl: ''
+                        }))}
+                        className={`p-1.5 rounded-lg border text-left flex items-center gap-1.5 transition-all relative overflow-hidden ${
+                          isCurrent
+                            ? 'border-amber-400 bg-amber-500/20 ring-1 ring-amber-400'
+                            : 'border-slate-800 hover:border-slate-700 bg-slate-900/60'
+                        }`}
+                      >
+                        <img src={preset.imageUrl} alt={preset.name} className="w-6 h-6 rounded object-cover shrink-0" />
+                        <span className="text-[10px] font-bold text-slate-200 truncate">{preset.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
 
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 mb-1">
-                    Subir Imagen de Fondo Personalizada (Celular / PC)
+                {/* Custom Background Upload */}
+                <div className="pt-2 border-t border-slate-800">
+                  <label className="block text-[10px] font-bold text-cyan-400 mb-1 flex items-center gap-1">
+                    <Upload className="w-3 h-3" />
+                    <span>O Subir Fondo Personalizado (Celular / PC):</span>
                   </label>
                   <input
                     type="file"
                     accept="image/*"
                     onChange={handleCustomBgFileUpload}
-                    className="text-xs text-slate-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-[10px] file:font-bold file:bg-emerald-500 file:text-slate-950 hover:file:bg-emerald-400 cursor-pointer w-full"
+                    className="text-xs text-slate-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-[10px] file:font-bold file:bg-cyan-600 file:text-white hover:file:bg-cyan-500 cursor-pointer w-full"
                   />
                 </div>
               </div>
 
               <button
                 type="submit"
-                className="w-full py-3 bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 text-white font-bold text-xs rounded-xl shadow transition-all"
+                className="w-full py-3 bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 text-white font-bold text-xs rounded-xl shadow-lg transition-all"
               >
                 Guardar Cromo y Fondo
               </button>
@@ -1070,10 +1226,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   return (
                     <div
                       key={st.id}
-                      className={`relative p-2.5 rounded-xl border flex flex-col justify-between space-y-2 transition-all ${
+                      style={getCardThemeStyle(st)}
+                      className={`relative p-2.5 rounded-2xl border flex flex-col justify-between space-y-2 transition-all overflow-hidden ${
                         isSelected
-                          ? 'bg-rose-950/30 border-rose-500 ring-2 ring-rose-500/50 shadow-lg shadow-rose-950/40'
-                          : 'bg-slate-950 border-slate-800 hover:border-slate-700'
+                          ? 'border-rose-500 ring-2 ring-rose-500 shadow-xl shadow-rose-950/50'
+                          : 'border-slate-800 hover:border-slate-600 shadow-lg'
                       }`}
                     >
                       {/* Checkbox Overlay Top-Right */}
@@ -1083,7 +1240,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           e.stopPropagation();
                           toggleSelectSticker(st.number);
                         }}
-                        className={`absolute top-2 right-2 z-10 w-6 h-6 rounded-lg flex items-center justify-center transition-all ${
+                        className={`absolute top-2 right-2 z-20 w-6 h-6 rounded-lg flex items-center justify-center transition-all ${
                           isSelected
                             ? 'bg-rose-600 text-white shadow-md'
                             : 'bg-slate-900/90 hover:bg-slate-800 text-slate-400 border border-slate-700'
@@ -1093,36 +1250,36 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         {isSelected ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
                       </button>
 
-                      <div>
-                        <div className="flex items-center justify-between text-[10px] pr-7">
+                      <div className="bg-slate-950/80 p-2 rounded-xl backdrop-blur-xs border border-slate-800/80">
+                        <div className="flex items-center justify-between text-[10px] pr-7 mb-1">
                           <span className="font-mono font-bold text-amber-400">#{st.number}</span>
-                          <span className="text-slate-400 uppercase truncate">{st.rarity}</span>
+                          <span className="text-slate-300 font-semibold uppercase truncate text-[9px]">{st.rarity}</span>
                         </div>
                         <img
                           src={st.imageUrl}
                           alt={st.name}
-                          className="w-full h-24 object-cover rounded my-1 border border-slate-800"
+                          className="w-full h-24 object-cover rounded-lg my-1 border border-slate-700/60"
                         />
                         <h5 className="font-bold text-xs text-white truncate">{st.name}</h5>
-                        <p className="text-[10px] text-slate-400">{st.team}</p>
+                        <p className="text-[10px] text-amber-300/80">{st.team} · {st.position}</p>
                       </div>
 
-                      <div className="flex items-center justify-between pt-2 border-t border-slate-800/60">
+                      <div className="flex items-center justify-between pt-1.5 border-t border-slate-800/80 bg-slate-950/85 -mx-2.5 -mb-2.5 p-2 rounded-b-2xl">
                         <button
                           type="button"
-                          onClick={() => setEditingSticker(st)}
-                          className="text-[10px] text-amber-400 font-bold hover:underline flex items-center gap-1"
+                          onClick={() => handleStartEdit(st)}
+                          className="text-xs text-amber-400 font-bold hover:underline flex items-center gap-1 bg-amber-500/10 hover:bg-amber-500/20 px-2 py-1 rounded-lg transition-colors"
                         >
-                          <Edit className="w-3 h-3" />
+                          <Edit className="w-3.5 h-3.5" />
                           <span>Editar</span>
                         </button>
                         <button
                           type="button"
                           onClick={() => handleDeleteSticker(st.number)}
                           disabled={isDeletingBatch}
-                          className="text-[10px] text-rose-400 font-bold hover:underline flex items-center gap-1"
+                          className="text-xs text-rose-400 font-bold hover:underline flex items-center gap-1 bg-rose-500/10 hover:bg-rose-500/20 px-2 py-1 rounded-lg transition-colors"
                         >
-                          <Trash2 className="w-3 h-3" />
+                          <Trash2 className="w-3.5 h-3.5" />
                           <span>Borrar</span>
                         </button>
                       </div>
@@ -1229,6 +1386,344 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               Publicar Código
             </button>
           </form>
+        </div>
+      )}
+
+      {/* FULL INTERACTIVE EDIT MODAL */}
+      {isEditModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-slate-900 border-2 border-amber-500/50 rounded-3xl w-full max-w-4xl max-h-[92vh] overflow-y-auto shadow-2xl relative animate-in fade-in zoom-in-95 p-6 space-y-6">
+            
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center shrink-0">
+                  <Edit className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-display font-black text-lg text-white">
+                    Editar Cromo #{editingSticker.number} - {editingSticker.name || 'Sin nombre'}
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Modifica foto, fondo (prestablecidos con imagen o personalizables) y atributos.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditModalOpen(false)}
+                className="w-9 h-9 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center text-sm font-bold transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Content: 2 Columns (Live Card Preview + Form) */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+              
+              {/* Column 1: Live Card Preview */}
+              <div className="md:col-span-5 flex flex-col items-center space-y-3">
+                <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5 uppercase tracking-wider">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Vista Previa en Vivo
+                </span>
+                
+                <div
+                  style={getCardThemeStyle(editingSticker)}
+                  className="w-full max-w-[260px] rounded-2xl p-3 border-2 border-amber-400/90 shadow-2xl flex flex-col justify-between min-h-[350px] relative overflow-hidden transition-all"
+                >
+                  <div className="flex items-center justify-between z-10 text-xs">
+                    <span className="font-mono font-bold px-2 py-0.5 rounded-md bg-slate-950/80 text-amber-400 border border-slate-800">
+                      #{String(editingSticker.number || 0).padStart(3, '0')}
+                    </span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-950 text-slate-200 uppercase">
+                      {editingSticker.rarity || 'comun'}
+                    </span>
+                  </div>
+
+                  <div className="my-auto py-2 z-10">
+                    <div className="w-full h-44 rounded-xl overflow-hidden border border-slate-700/80 shadow-inner bg-slate-950/40">
+                      <img
+                        src={editingSticker.imageUrl || 'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=400&q=80'}
+                        alt={editingSticker.name || 'Cromo'}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="z-10 bg-slate-950/90 p-2.5 rounded-xl border border-slate-800">
+                    <h4 className="font-bold text-sm text-white truncate">{editingSticker.name || 'Nombre del Jugador'}</h4>
+                    <p className="text-xs text-amber-300 font-medium">{editingSticker.team || 'Selección'} · {editingSticker.position || 'Delantero'}</p>
+                    {editingSticker.stats?.description && (
+                      <p className="text-[10px] text-slate-400 italic line-clamp-2 mt-1">"{editingSticker.stats.description}"</p>
+                    )}
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-slate-400 text-center">
+                  El cromo se actualizará con este aspecto en el álbum y en la base de datos de Firebase.
+                </p>
+              </div>
+
+              {/* Column 2: Edit Form & Theme Selectors */}
+              <div className="md:col-span-7 space-y-4">
+                <form onSubmit={handleSaveSticker} className="space-y-4">
+                  
+                  {/* Basic Data Inputs */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-300 mb-1">Nombre</label>
+                      <input
+                        type="text"
+                        required
+                        value={editingSticker.name || ''}
+                        onChange={e => setEditingSticker({ ...editingSticker, name: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-bold focus:border-amber-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-300 mb-1">Número de Cromo</label>
+                      <input
+                        type="number"
+                        required
+                        min="1"
+                        value={editingSticker.number || ''}
+                        onChange={e => setEditingSticker({ ...editingSticker, number: Number(e.target.value) })}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-mono font-bold focus:border-amber-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-300 mb-1">Selección / Equipo</label>
+                      <input
+                        type="text"
+                        value={editingSticker.team || ''}
+                        onChange={e => setEditingSticker({ ...editingSticker, team: e.target.value })}
+                        placeholder="ej. Argentina, Brasil, España"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:border-amber-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-300 mb-1">Posición</label>
+                      <select
+                        value={editingSticker.position || 'Delantero'}
+                        onChange={e => setEditingSticker({ ...editingSticker, position: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:border-amber-500 focus:outline-none"
+                      >
+                        <option value="Delantero">Delantero</option>
+                        <option value="Mediocampista">Mediocampista</option>
+                        <option value="Defensa">Defensa</option>
+                        <option value="Portero">Portero</option>
+                        <option value="Escudo">Escudo de Selección</option>
+                        <option value="Trofeo">Trofeo Oficial</option>
+                        <option value="Estadio">Estadio Sede</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-300 mb-1">Categoría</label>
+                      <select
+                        value={editingSticker.category || 'Especiales / Leyendas'}
+                        onChange={e => setEditingSticker({ ...editingSticker, category: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:border-amber-500 focus:outline-none"
+                      >
+                        <option value="Especiales / Leyendas">Especiales / Leyendas</option>
+                        <option value="Argentina">Argentina</option>
+                        <option value="Brasil">Brasil</option>
+                        <option value="España">España</option>
+                        <option value="Francia">Francia</option>
+                        <option value="Inglaterra">Inglaterra</option>
+                        <option value="Sedes 2026">Sedes 2026</option>
+                        <option value="Cromos Especiales">Cromos Especiales</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-300 mb-1">Rareza</label>
+                      <select
+                        value={editingSticker.rarity || 'comun'}
+                        onChange={e => setEditingSticker({ ...editingSticker, rarity: e.target.value as any })}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:border-amber-500 focus:outline-none"
+                      >
+                        <option value="comun">Común (Base)</option>
+                        <option value="rara">Rara (Plateada)</option>
+                        <option value="dorada_holo">Dorada Holo (Especial brillante)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* PRESET BACKGROUND GALLERY (WITH REAL IMAGES) */}
+                  <div className="bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <Palette className="w-4 h-4 text-emerald-400" />
+                        <span>Fondos con Imagen Prestablecidos</span>
+                      </label>
+                      <span className="text-[10px] text-slate-400">Toca para aplicar al cromo</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {CARD_THEME_PRESETS.map(preset => {
+                        const isCurrent = editingSticker.bgTheme === preset.id && !editingSticker.customBgUrl;
+                        return (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            onClick={() => setEditingSticker(prev => ({
+                              ...prev,
+                              bgTheme: preset.id,
+                              customBgUrl: '' // clear custom to use preset image
+                            }))}
+                            className={`p-2 rounded-xl border text-left flex flex-col justify-between transition-all relative overflow-hidden group ${
+                              isCurrent
+                                ? 'border-amber-400 ring-2 ring-amber-400/80 shadow-lg scale-102'
+                                : 'border-slate-800 hover:border-slate-600'
+                            }`}
+                            style={{
+                              backgroundImage: preset.backgroundCss,
+                              backgroundSize: 'cover'
+                            }}
+                          >
+                            <div className="h-9 w-full" />
+                            <div className="bg-slate-950/90 p-1.5 rounded-lg border border-slate-800/80 z-10">
+                              <span className="font-bold text-[10px] text-white block truncate">{preset.name}</span>
+                              <span className="text-[8px] text-amber-400 block">{preset.category}</span>
+                            </div>
+                            {isCurrent && (
+                              <div className="absolute top-1.5 right-1.5 bg-amber-500 text-slate-950 rounded-full p-0.5 shadow">
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* CUSTOM BACKGROUND UPLOAD OR URL */}
+                  <div className="bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-cyan-400 flex items-center gap-1.5">
+                        <Upload className="w-4 h-4" />
+                        <span>Fondo Personalizado (Subir Imagen o URL)</span>
+                      </label>
+                      {editingSticker.customBgUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setEditingSticker(prev => ({ ...prev, customBgUrl: '', bgTheme: 'gold_holo' }))}
+                          className="text-[10px] text-rose-400 hover:underline"
+                        >
+                          Quitar fondo personalizado
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <span className="block text-[10px] font-bold text-slate-400 mb-1">
+                          Subir desde Celular o PC:
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleCustomBgFileUpload}
+                          className="text-xs text-slate-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-xl file:border-0 file:text-[10px] file:font-bold file:bg-cyan-600 file:text-white hover:file:bg-cyan-500 cursor-pointer w-full"
+                        />
+                      </div>
+                      <div>
+                        <span className="block text-[10px] font-bold text-slate-400 mb-1">
+                          O pegar URL directa de imagen:
+                        </span>
+                        <input
+                          type="url"
+                          value={editingSticker.customBgUrl || ''}
+                          onChange={e => setEditingSticker({
+                            ...editingSticker,
+                            bgTheme: 'custom_bg',
+                            customBgUrl: e.target.value
+                          })}
+                          placeholder="https://..."
+                          className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-xs text-white focus:border-cyan-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* PLAYER PHOTO UPLOAD OR URL */}
+                  <div className="bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800 space-y-2.5">
+                    <label className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                      <Upload className="w-4 h-4" />
+                      <span>Foto del Jugador</span>
+                    </label>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <span className="block text-[10px] font-bold text-slate-400 mb-1">
+                          Subir Foto:
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleStickerPhotoFileUpload}
+                          className="text-xs text-slate-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-xl file:border-0 file:text-[10px] file:font-bold file:bg-amber-500 file:text-slate-950 hover:file:bg-amber-400 cursor-pointer w-full"
+                        />
+                      </div>
+                      <div>
+                        <span className="block text-[10px] font-bold text-slate-400 mb-1">
+                          O pegar URL de foto:
+                        </span>
+                        <input
+                          type="url"
+                          value={editingSticker.imageUrl || ''}
+                          onChange={e => setEditingSticker({ ...editingSticker, imageUrl: e.target.value })}
+                          placeholder="https://..."
+                          className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-xs text-white focus:border-amber-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Description / Stats */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-300 mb-1">Descripción / Datos Históricos</label>
+                    <textarea
+                      rows={2}
+                      value={editingSticker.stats?.description || ''}
+                      onChange={e => setEditingSticker({
+                        ...editingSticker,
+                        stats: { ...(editingSticker.stats || {}), description: e.target.value }
+                      })}
+                      placeholder="ej. Máximo goleador histórico del fútbol..."
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white focus:border-amber-500 focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Actions Bar */}
+                  <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setIsEditModalOpen(false)}
+                      className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-all"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-6 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 text-slate-950 font-black text-xs rounded-xl shadow-lg transition-all flex items-center gap-2"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Guardar Cambios en Firebase</span>
+                    </button>
+                  </div>
+
+                </form>
+              </div>
+
+            </div>
+
+          </div>
         </div>
       )}
 

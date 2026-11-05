@@ -305,16 +305,47 @@ export async function deleteFirestoreTrade(tradeId: string): Promise<void> {
   }
 }
 
+function cleanFirestoreData(obj: any): any {
+  if (obj === null || obj === undefined) return null;
+  if (typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(cleanFirestoreData);
+
+  const cleaned: Record<string, any> = {};
+  for (const key of Object.keys(obj)) {
+    const val = obj[key];
+    if (val !== undefined) {
+      cleaned[key] = cleanFirestoreData(val);
+    }
+  }
+  return cleaned;
+}
+
 // Save or Update Sticker in Firestore
 export async function saveStickerToFirestore(sticker: Sticker): Promise<void> {
   try {
-    const docId = sticker.id || `cromo_${String(sticker.number).padStart(3, '0')}`;
-    const cleanSticker: Sticker = {
-      ...sticker,
+    const stNum = Number(sticker.number) || 1;
+    const docId = sticker.id || `cromo_${String(stNum).padStart(3, '0')}`;
+    const cleanSticker = cleanFirestoreData({
       id: docId,
-      number: Number(sticker.number)
-    };
+      number: stNum,
+      name: sticker.name || 'Nuevo Cromo',
+      category: sticker.category || 'Especiales / Leyendas',
+      team: sticker.team || 'FIFA',
+      position: sticker.position || 'Delantero',
+      rarity: sticker.rarity || 'comun',
+      imageUrl: sticker.imageUrl || 'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=400&q=80',
+      bgTheme: sticker.bgTheme || 'gold_holo',
+      customBgUrl: sticker.customBgUrl || '',
+      stats: sticker.stats || { description: 'Cromo creado por el Administrador' }
+    });
+
     await setDoc(doc(db, 'stickers', docId), cleanSticker, { merge: true });
+
+    // Lock initial seed lock so Firestore doesn't reseed deleted stickers
+    try {
+      await setDoc(doc(db, 'system', 'config'), { initial_seed_done: true }, { merge: true });
+      localStorage.setItem('album_catalog_seeded_v1', 'true');
+    } catch {}
   } catch (error) {
     logFirestoreError(error, 'saveStickerToFirestore');
     throw error;
