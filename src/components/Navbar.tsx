@@ -145,15 +145,15 @@ export const Navbar: React.FC<NavbarProps> = ({
             {user ? (
               <div className="flex items-center gap-3">
                 {/* User Coins & Progress */}
-                <div className="hidden sm:flex items-center gap-3 bg-slate-950/80 px-3 py-1.5 rounded-xl border border-slate-800">
-                  <div className="flex items-center gap-1.5 text-amber-400 font-mono text-xs font-bold">
+                <div className="flex items-center gap-2.5 bg-slate-950/90 px-3 py-1.5 rounded-xl border border-amber-500/40 shadow">
+                  <div className="flex items-center gap-1.5 text-amber-400 font-mono text-xs font-black">
                     <Coins className="w-4 h-4 text-amber-400" />
-                    <span>{user.coins}</span>
+                    <span>{user.coins} pts</span>
                   </div>
 
                   <div className="w-px h-4 bg-slate-800" />
 
-                  <div className="flex items-center gap-1.5 text-xs text-slate-300">
+                  <div className="flex items-center gap-1 text-xs text-slate-300">
                     <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
                     <span className="font-mono font-bold text-emerald-400">{percentage}%</span>
                   </div>

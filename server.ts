@@ -1019,8 +1019,12 @@ app.post('/api/admin/grant', verifyAdmin, (req: Request, res: Response) => {
   const target = db.users.find(u => u.username.toLowerCase() === (targetUsername || '').toLowerCase());
   if (!target) return res.status(404).json({ error: 'Usuario destino no encontrado.' });
 
-  if (packsCount) target.packsCount += Number(packsCount);
-  if (coins) target.coins += Number(coins);
+  if (packsCount !== undefined) {
+    target.packsCount = Math.max(0, target.packsCount + Number(packsCount));
+  }
+  if (coins !== undefined) {
+    target.coins = Math.max(0, target.coins + Number(coins));
+  }
   if (stickerNumber) {
     const stNum = Number(stickerNumber);
     target.duplicates[stNum] = (target.duplicates[stNum] || 0) + 1;

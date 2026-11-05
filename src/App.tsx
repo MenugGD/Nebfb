@@ -12,232 +12,214 @@ import { RedeemView } from './components/RedeemView';
 import { AdminPanel } from './components/AdminPanel';
 import { AuthModal } from './components/AuthModal';
 import { sounds } from './utils/audio';
-import { Gamepad2, Shield, Trophy, Sparkles } from 'lucide-react';
+import {
+  testFirestoreConnection,
+  initializeFirestoreSeed,
+  getFirestoreStickers,
+  updateUserInFirestore,
+  subscribeFirestoreTrades
+} from './services/firebaseService';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
   const [stickers, setStickers] = useState<Sticker[]>([]);
   const [trades, setTrades] = useState<TradeOffer[]>([]);
   const [activeTab, setActiveTab] = useState<'album' | 'packs' | 'minigame' | 'inventory' | 'trades' | 'codes' | 'admin'>('album');
-  
-  // Selected minigame within the Minigame Hub
   const [selectedMinigame, setSelectedMinigame] = useState<'goalkeeper' | 'aquapark' | 'match3'>('goalkeeper');
-
-  const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [preSelectedTradeOffered, setPreSelectedTradeOffered] = useState<number | null>(null);
 
-  // Load initial data
   useEffect(() => {
-    fetchStickers();
-    fetchTrades();
     checkStoredAuth();
+    testFirestoreConnection();
+    initializeFirestoreSeed();
+    loadStickersFromFirestore();
+
+    const unsubscribe = subscribeFirestoreTrades((liveTrades) => {
+      setTrades(liveTrades);
+    });
+
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
   }, []);
 
-  const fetchStickers = async () => {
+  const loadStickersFromFirestore = async () => {
     try {
-      const res = await fetch('/api/album/stickers');
-      const data = await res.json();
-      if (res.ok) {
-        setStickers(data.stickers || []);
+      const list = await getFirestoreStickers();
+      if (list && list.length > 0) {
+        setStickers(list);
       }
-    } catch (err) {
-      console.error('Error fetching stickers:', err);
+    } catch {
+      // Keep default
     }
   };
 
-  const fetchTrades = async () => {
-    try {
-      const res = await fetch('/api/trades');
-      const data = await res.json();
-      if (res.ok) {
-        setTrades(data.trades || []);
-      }
-    } catch (err) {
-      console.error('Error fetching trades:', err);
-    }
-  };
-
-  const checkStoredAuth = async () => {
+  const checkStoredAuth = () => {
     const savedUser = localStorage.getItem('album_user');
     if (savedUser) {
       try {
         const u = JSON.parse(savedUser);
-        setUser(u);
-        refreshUser(u.username);
+        if (u && u.username) {
+          setUser(u);
+        }
       } catch {
-        // Bad storage
+        setUser(null);
       }
     }
   };
 
-  const refreshUser = async (username: string) => {
-    try {
-      const res = await fetch('/api/user/me', {
-        headers: { 'x-user-name': username }
-      });
-      const data = await res.json();
-      if (res.ok && data.user) {
-        setUser(data.user);
-        localStorage.setItem('album_user', JSON.stringify(data.user));
-      }
-    } catch (err) {
-      console.error('Error refreshing user:', err);
-    }
-  };
-
-  const handleAuthSuccess = (userData: User, authToken: string) => {
+  const handleAuthSuccess = (userData: User) => {
     setUser(userData);
-    setToken(authToken);
     localStorage.setItem('album_user', JSON.stringify(userData));
+    updateUserInFirestore(userData);
     sounds.playCoin();
   };
 
   const handleLogout = () => {
     setUser(null);
-    setToken(null);
     localStorage.removeItem('album_user');
     setActiveTab('album');
   };
 
-  // Album Stick action
+  const saveUserToFirebase = (updatedUser: User) => {
+    setUser(updatedUser);
+    localStorage.setItem('album_user', JSON.stringify(updatedUser));
+    updateUserInFirestore(updatedUser);
+  };
+
   const handleStickSticker = async (stickerNumber: number) => {
     if (!user) return;
-    const res = await fetch('/api/album/stick', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: user.username, stickerNumber })
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      alert(data.error || 'Error al pegar cromo');
-      throw new Error(data.error);
+    const updatedUser: User = {
+      ...user,
+      pastedStickers: [...(user.pastedStickers || []), stickerNumber].sort((a, b) => a - b),
+      duplicates: {
+        ...(user.duplicates || {}),
+        [stickerNumber]: Math.max(0, ((user.duplicates || {})[stickerNumber] || 1) - 1)
+      }
+    };
+    if (updatedUser.duplicates[stickerNumber] === 0) {
+      delete updatedUser.duplicates[stickerNumber];
     }
-    setUser(data.user);
-    localStorage.setItem('album_user', JSON.stringify(data.user));
+    saveUserToFirebase(updatedUser);
   };
 
-  // Open Booster Pack
   const handleOpenPack = async (): Promise<Sticker[]> => {
-    if (!user) throw new Error('No autenticado');
-    const res = await fetch('/api/packs/open', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: user.username })
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      alert(data.error || 'Error al abrir sobre');
-      throw new Error(data.error);
+    if (!user) throw new Error('Debes iniciar sesión.');
+    if (user.packsCount <= 0) throw new Error('No tienes sobres disponibles.');
+
+    const pulled: Sticker[] = [];
+    const newDuplicates = { ...(user.duplicates || {}) };
+
+    for (let i = 0; i < 5; i++) {
+      const randSticker = stickers[Math.floor(Math.random() * stickers.length)];
+      if (randSticker) {
+        pulled.push(randSticker);
+        newDuplicates[randSticker.number] = (newDuplicates[randSticker.number] || 0) + 1;
+      }
     }
-    setUser(data.user);
-    localStorage.setItem('album_user', JSON.stringify(data.user));
-    return data.pulledStickers;
+
+    const updatedUser: User = {
+      ...user,
+      packsCount: user.packsCount - 1,
+      duplicates: newDuplicates
+    };
+
+    saveUserToFirebase(updatedUser);
+    return pulled;
   };
 
-  // Buy Packs with Coins/Points
   const handleBuyPacks = async (amount: number) => {
     if (!user) return;
-    const res = await fetch('/api/packs/buy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: user.username, amount })
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      alert(data.error || 'Error al comprar sobres');
-      throw new Error(data.error);
-    }
-    setUser(data.user);
-    localStorage.setItem('album_user', JSON.stringify(data.user));
+    const cost = amount * 100;
+    if (user.coins < cost) throw new Error('Puntos insuficientes');
+
+    const updatedUser: User = {
+      ...user,
+      coins: user.coins - cost,
+      packsCount: user.packsCount + amount
+    };
+
+    saveUserToFirebase(updatedUser);
   };
 
-  // Earn Minigame Points
   const handleEarnMinigamePoints = async (points: number) => {
     if (!user) return;
-    const res = await fetch('/api/admin/grant', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-admin-user': 'MenugDDLC'
-      },
-      body: JSON.stringify({
-        targetUsername: user.username,
-        coins: points
-      })
-    });
-    const data = await res.json();
-    if (res.ok && data.user) {
-      setUser(data.user);
-      localStorage.setItem('album_user', JSON.stringify(data.user));
-    }
+    const updatedUser: User = {
+      ...user,
+      coins: Math.max(0, user.coins + points)
+    };
+    saveUserToFirebase(updatedUser);
   };
 
-  // Redeem Code
   const handleRedeemCode = async (code: string) => {
     if (!user) throw new Error('Inicia sesión para canjear códigos.');
-    const res = await fetch('/api/codes/redeem', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: user.username, code })
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || 'Código inválido');
+    const cleanCode = code.trim().toUpperCase();
+
+    if ((user.redeemedCodes || []).includes(cleanCode)) {
+      throw new Error('Ya has canjeado este código previamente.');
     }
-    setUser(data.user);
-    localStorage.setItem('album_user', JSON.stringify(data.user));
-    return data;
+
+    let reward = { packs: 3, coins: 300, bonusSticker: undefined as Sticker | undefined };
+    if (cleanCode === 'MENUG1011') {
+      reward = { packs: 10, coins: 500, bonusSticker: stickers[0] };
+    } else if (cleanCode === 'MUNDIAL2026') {
+      reward = { packs: 5, coins: 300, bonusSticker: undefined };
+    } else if (cleanCode === 'ORO2026') {
+      reward = { packs: 2, coins: 1000, bonusSticker: stickers[4] };
+    }
+
+    const newDuplicates = { ...(user.duplicates || {}) };
+    if (reward.bonusSticker) {
+      newDuplicates[reward.bonusSticker.number] = (newDuplicates[reward.bonusSticker.number] || 0) + 1;
+    }
+
+    const updatedUser: User = {
+      ...user,
+      packsCount: user.packsCount + reward.packs,
+      coins: user.coins + reward.coins,
+      duplicates: newDuplicates,
+      redeemedCodes: [...(user.redeemedCodes || []), cleanCode]
+    };
+
+    saveUserToFirebase(updatedUser);
+    return { reward };
   };
 
-  // Trading
   const handleCreateTrade = async (offeredNum: number, requestedNum: number) => {
     if (!user) return;
-    const res = await fetch('/api/trades/create', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        username: user.username,
-        offeredStickerNumber: offeredNum,
-        requestedStickerNumber: requestedNum
-      })
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || 'Error al crear la oferta');
-    }
-    fetchTrades();
-    refreshUser(user.username);
+    const newTrade: TradeOffer = {
+      id: `trd_${Date.now()}`,
+      creatorUsername: user.username,
+      offeredStickerNumber: offeredNum,
+      requestedStickerNumber: requestedNum,
+      status: 'active',
+      createdAt: new Date().toISOString()
+    };
+    setTrades(prev => [newTrade, ...prev]);
   };
 
   const handleAcceptTrade = async (tradeId: string) => {
     if (!user) return;
-    const res = await fetch('/api/trades/accept', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tradeId, username: user.username })
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || 'Error al aceptar intercambio');
-    }
-    setUser(data.user);
-    localStorage.setItem('album_user', JSON.stringify(data.user));
-    fetchTrades();
+    const trade = trades.find(t => t.id === tradeId);
+    if (!trade || trade.status !== 'active') return;
+
+    const newDuplicates = { ...(user.duplicates || {}) };
+    newDuplicates[trade.requestedStickerNumber] = Math.max(0, (newDuplicates[trade.requestedStickerNumber] || 1) - 1);
+    if (newDuplicates[trade.requestedStickerNumber] === 0) delete newDuplicates[trade.requestedStickerNumber];
+    newDuplicates[trade.offeredStickerNumber] = (newDuplicates[trade.offeredStickerNumber] || 0) + 1;
+
+    const updatedUser: User = {
+      ...user,
+      duplicates: newDuplicates
+    };
+
+    saveUserToFirebase(updatedUser);
+    setTrades(prev => prev.map(t => t.id === tradeId ? { ...t, status: 'completed' as const, completedBy: user.username } : t));
   };
 
   const handleCancelTrade = async (tradeId: string) => {
     if (!user) return;
-    const res = await fetch('/api/trades/cancel', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tradeId, username: user.username })
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || 'Error al cancelar');
-    }
-    fetchTrades();
+    setTrades(prev => prev.filter(t => t.id !== tradeId));
   };
 
   const handleOpenTradeFromInventory = (offeredNum: number) => {
@@ -245,26 +227,34 @@ export default function App() {
     setActiveTab('trades');
   };
 
-  const pastedCount = user?.pastedStickers.length || 0;
+  // Mandatory Login Screen
+  if (!user) {
+    return (
+      <AuthModal
+        isOpen={true}
+        onSuccess={handleAuthSuccess}
+        isMandatoryScreen={true}
+      />
+    );
+  }
+
+  const pastedCount = user.pastedStickers?.length || 0;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
       
-      {/* Top Bar Navigation */}
       <Navbar
         user={user}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        onOpenAuth={() => setIsAuthOpen(true)}
+        onOpenAuth={() => {}}
         onLogout={handleLogout}
         pastedCount={pastedCount}
         totalStickers={stickers.length}
       />
 
-      {/* Main Content Viewport */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6">
         
-        {/* Navigation Quick Strip for Minigame */}
         <div className="mb-6 flex items-center justify-between bg-slate-900/60 p-3 rounded-2xl border border-slate-800">
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold text-slate-300">🎮 ¡Gana Puntos Jugando Minijuegos!</span>
@@ -288,7 +278,7 @@ export default function App() {
             user={user}
             onStick={handleStickSticker}
             onOpenPacksTab={() => setActiveTab('packs')}
-            onOpenAuth={() => setIsAuthOpen(true)}
+            onOpenAuth={() => {}}
           />
         )}
 
@@ -297,16 +287,13 @@ export default function App() {
             user={user}
             onOpenPack={handleOpenPack}
             onBuyPacks={handleBuyPacks}
-            onOpenAuth={() => setIsAuthOpen(true)}
+            onOpenAuth={() => {}}
             onGoToAlbum={() => setActiveTab('album')}
           />
         )}
 
-        {/* Minigames Hub View */}
         {activeTab === 'minigame' && (
           <div className="space-y-6">
-            
-            {/* Minigame Selector Selector Bar */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <button
                 onClick={() => setSelectedMinigame('goalkeeper')}
@@ -360,28 +347,27 @@ export default function App() {
               </button>
             </div>
 
-            {/* Render Selected Minigame */}
             {selectedMinigame === 'goalkeeper' && (
               <GoalkeeperMinigame
                 onEarnPoints={handleEarnMinigamePoints}
-                userPoints={user?.coins || 0}
+                userPoints={user.coins}
               />
             )}
 
             {selectedMinigame === 'aquapark' && (
               <AquaparkMinigame
                 onEarnPoints={handleEarnMinigamePoints}
-                userPoints={user?.coins || 0}
+                userPoints={user.coins}
+                currentUser={user}
               />
             )}
 
             {selectedMinigame === 'match3' && (
               <Match3Minigame
                 onEarnPoints={handleEarnMinigamePoints}
-                userPoints={user?.coins || 0}
+                userPoints={user.coins}
               />
             )}
-
           </div>
         )}
 
@@ -392,7 +378,7 @@ export default function App() {
             onStick={handleStickSticker}
             onOpenTradeModal={handleOpenTradeFromInventory}
             onGoToMarket={() => setActiveTab('trades')}
-            onOpenAuth={() => setIsAuthOpen(true)}
+            onOpenAuth={() => {}}
           />
         )}
 
@@ -404,7 +390,7 @@ export default function App() {
             onCreateTrade={handleCreateTrade}
             onAcceptTrade={handleAcceptTrade}
             onCancelTrade={handleCancelTrade}
-            onOpenAuth={() => setIsAuthOpen(true)}
+            onOpenAuth={() => {}}
             preSelectedOfferedNum={preSelectedTradeOffered}
           />
         )}
@@ -413,7 +399,7 @@ export default function App() {
           <RedeemView
             user={user}
             onRedeemCode={handleRedeemCode}
-            onOpenAuth={() => setIsAuthOpen(true)}
+            onOpenAuth={() => {}}
           />
         )}
 
@@ -422,24 +408,15 @@ export default function App() {
             user={user}
             stickers={stickers}
             onRefreshData={() => {
-              fetchStickers();
-              if (user) refreshUser(user.username);
+              loadStickersFromFirestore();
             }}
           />
         )}
       </main>
 
-      {/* Auth Modal */}
-      <AuthModal
-        isOpen={isAuthOpen}
-        onClose={() => setIsAuthOpen(false)}
-        onSuccess={handleAuthSuccess}
-      />
-
-      {/* Footer */}
       <footer className="border-t border-slate-900 bg-slate-950 py-6 text-center text-xs text-slate-500">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <span>Álbum Oficial de Cromos Mundial 2026 · Edición Panini Digital</span>
+          <span>Álbum Oficial de Cromos Mundial 2026 · Conectado a Firebase Firestore</span>
           <span className="text-slate-400">Admin Supremo: MenugDDLC</span>
         </div>
       </footer>

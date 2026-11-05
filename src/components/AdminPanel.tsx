@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Sticker, User, RedeemCode } from '../types';
 import { sounds } from '../utils/audio';
-import { Shield, Plus, Gift, Trash2, Edit, Sparkles, Users, KeyRound, Layers, CheckCircle2, AlertCircle, Image as ImageIcon, Upload, Palette, Cpu } from 'lucide-react';
+import { Shield, Plus, Minus, Gift, Trash2, Edit, Sparkles, Users, KeyRound, Layers, CheckCircle2, AlertCircle, Upload, Palette, Cpu, Coins, Package } from 'lucide-react';
 
 interface AdminPanelProps {
   user: User | null;
@@ -15,9 +15,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
 
   // Grant / Take state
   const [targetUser, setTargetUser] = useState<string>('');
+  const [actionMode, setActionMode] = useState<'add' | 'subtract'>('add');
   const [grantPacks, setGrantPacks] = useState<number>(5);
   const [grantCoins, setGrantCoins] = useState<number>(500);
-  const [grantStickerNum, setGrantStickerNum] = useState<number>(1);
+  const [grantStickerNum, setGrantStickerNum] = useState<number>(0);
   const [msg, setMsg] = useState<{ text: string; isError?: boolean } | null>(null);
 
   // Sticker form state
@@ -81,7 +82,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
     );
   }
 
-  // File Upload Handlers (from mobile / PC file picker)
+  // File Upload Handlers
   const handleStickerPhotoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -114,9 +115,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
     reader.readAsDataURL(file);
   };
 
-  const handleGrantSubmit = async (e: React.FormEvent) => {
+  const handleGrantOrDeductSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setMsg(null);
+
+    const multiplier = actionMode === 'add' ? 1 : -1;
+    const finalPacks = grantPacks * multiplier;
+    const finalCoins = grantCoins * multiplier;
+
     try {
       const res = await fetch('/api/admin/grant', {
         method: 'POST',
@@ -126,8 +132,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
         },
         body: JSON.stringify({
           targetUsername: targetUser,
-          packsCount: grantPacks,
-          coins: grantCoins,
+          packsCount: finalPacks,
+          coins: finalCoins,
           stickerNumber: grantStickerNum > 0 ? grantStickerNum : undefined
         })
       });
@@ -135,7 +141,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
       if (!res.ok) throw new Error(data.error);
 
       sounds.playCoin();
-      setMsg({ text: `¡Recompensas entregadas con éxito a ${targetUser}!` });
+      const actionText = actionMode === 'add' ? 'entregados a' : 'retirados de';
+      setMsg({ text: `¡${grantCoins} puntos y ${grantPacks} sobres ${actionText} ${targetUser} con éxito!` });
       fetchUsers();
       onRefreshData();
     } catch (err: any) {
@@ -143,7 +150,35 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
     }
   };
 
-  const handleTakeSticker = async (stickerNumber: number) => {
+  const handleQuickModifyPoints = async (username: string, deltaCoins: number, deltaPacks: number = 0) => {
+    setMsg(null);
+    try {
+      const res = await fetch('/api/admin/grant', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-user': user.username
+        },
+        body: JSON.stringify({
+          targetUsername: username,
+          coins: deltaCoins,
+          packsCount: deltaPacks
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      sounds.playCoin();
+      const sign = deltaCoins > 0 ? '+' : '';
+      setMsg({ text: `Actualizado: ${username} (${sign}${deltaCoins} Puntos / ${deltaPacks} Sobres)` });
+      fetchUsers();
+      onRefreshData();
+    } catch (err: any) {
+      setMsg({ text: err.message, isError: true });
+    }
+  };
+
+  const handleTakeSticker = async (username: string, stickerNumber: number) => {
     setMsg(null);
     try {
       const res = await fetch('/api/admin/take', {
@@ -153,14 +188,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
           'x-admin-user': user.username
         },
         body: JSON.stringify({
-          targetUsername: targetUser,
+          targetUsername: username,
           stickerNumber
         })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
-      setMsg({ text: `Cromo #${stickerNumber} retirado a ${targetUser}` });
+      setMsg({ text: `Cromo #${stickerNumber} retirado a ${username}` });
       fetchUsers();
       onRefreshData();
     } catch (err: any) {
@@ -184,7 +219,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
       if (!res.ok) throw new Error(data.error);
 
       sounds.playCardReveal(true);
-      setMsg({ text: `Cromo #${editingSticker.number} (${editingSticker.name}) guardado con fondo y fotos actualizados.` });
+      setMsg({ text: `Cromo #${editingSticker.number} (${editingSticker.name}) guardado con éxito.` });
       onRefreshData();
     } catch (err: any) {
       setMsg({ text: err.message, isError: true });
@@ -249,7 +284,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
         }
       });
       setActiveTab('stickers');
-      setMsg({ text: '¡Cromo generado con Inteligencia Artificial Gemini! Puedes adjuntar una foto de tu celular antes de guardar.' });
+      setMsg({ text: '¡Cromo generado con Gemini AI! Puedes adjuntar una foto de tu celular antes de guardar.' });
     } catch (err: any) {
       setMsg({ text: err.message || 'Error con la API Gemini', isError: true });
     } finally {
@@ -305,7 +340,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
               </span>
             </div>
             <p className="text-xs text-rose-200/80 mt-1">
-              Sube fotos desde tu celular/PC, configura fondos personalizados para estampillas y gestiona el álbum.
+              Dar o Quitar Puntos/Monedas, gestionar sobres, subir fotos y controlar el álbum.
             </p>
           </div>
         </div>
@@ -334,7 +369,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
           }`}
         >
           <Users className="w-4 h-4" />
-          Dar / Quitar a Usuarios
+          Dar / Quitar Puntos y Sobres
         </button>
 
         <button
@@ -378,16 +413,46 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
       {activeTab === 'users' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
+          {/* Form */}
           <div className="lg:col-span-1 bg-slate-900/90 border border-slate-800 rounded-3xl p-6 space-y-5 shadow-xl">
             <h3 className="font-display font-extrabold text-base text-white flex items-center gap-2">
               <Gift className="w-5 h-5 text-amber-400" />
-              Otorgar Beneficios a Usuario
+              Gestor de Puntos y Sobres
             </h3>
 
-            <form onSubmit={handleGrantSubmit} className="space-y-4">
+            {/* Mode Selector: Add or Subtract */}
+            <div className="grid grid-cols-2 gap-2 bg-slate-950 p-1 rounded-2xl border border-slate-800">
+              <button
+                type="button"
+                onClick={() => setActionMode('add')}
+                className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                  actionMode === 'add'
+                    ? 'bg-emerald-500 text-slate-950 shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Plus className="w-4 h-4" />
+                <span>Dar (+)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActionMode('subtract')}
+                className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                  actionMode === 'subtract'
+                    ? 'bg-rose-600 text-white shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Minus className="w-4 h-4" />
+                <span>Quitar (-)</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleGrantOrDeductSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-300 mb-1">
-                  Seleccionar Usuario Destino
+                  Usuario Destino
                 </label>
                 <select
                   value={targetUser}
@@ -396,104 +461,147 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
                 >
                   {usersList.map(u => (
                     <option key={u.id} value={u.username}>
-                      {u.username} ({u.role}) - {u.pastedStickers?.length || 0} Cromos
+                      {u.username} ({u.role}) - {u.coins} Pts - {u.packsCount} Sobres
                     </option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-amber-400 mb-1">Cantidad de Sobres a Dar</label>
-                <input
-                  type="number"
-                  min="0"
-                  value={grantPacks}
-                  onChange={e => setGrantPacks(Number(e.target.value))}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-yellow-400 mb-1">Cantidad de Puntos / Monedas a Dar</label>
+                <label className="block text-xs font-bold text-amber-400 mb-1 flex items-center gap-1">
+                  <Coins className="w-3.5 h-3.5" />
+                  <span>Puntos / Monedas {actionMode === 'add' ? 'a Entregar' : 'a Quitar'}</span>
+                </label>
                 <input
                   type="number"
                   min="0"
                   value={grantCoins}
                   onChange={e => setGrantCoins(Number(e.target.value))}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-mono font-bold"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-emerald-400 mb-1">Regalar Cromo Específico (#1 - #{stickers.length})</label>
-                <select
-                  value={grantStickerNum}
-                  onChange={e => setGrantStickerNum(Number(e.target.value))}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white"
-                >
-                  <option value={0}>Ningún Cromo Específico</option>
-                  {stickers.map(s => (
-                    <option key={s.number} value={s.number}>
-                      #{s.number} - {s.name} ({s.rarity})
-                    </option>
-                  ))}
-                </select>
+                <label className="block text-xs font-bold text-slate-300 mb-1 flex items-center gap-1">
+                  <Package className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Sobres {actionMode === 'add' ? 'a Entregar' : 'a Quitar'}</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={grantPacks}
+                  onChange={e => setGrantPacks(Number(e.target.value))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-mono font-bold"
+                />
               </div>
+
+              {actionMode === 'add' && (
+                <div>
+                  <label className="block text-xs font-bold text-emerald-400 mb-1">
+                    Regalar Cromo Específico (#1 - #{stickers.length})
+                  </label>
+                  <select
+                    value={grantStickerNum}
+                    onChange={e => setGrantStickerNum(Number(e.target.value))}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white"
+                  >
+                    <option value={0}>Ningún Cromo Específico</option>
+                    {stickers.map(s => (
+                      <option key={s.number} value={s.number}>
+                        #{s.number} - {s.name} ({s.rarity})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <button
                 type="submit"
-                className="w-full py-3 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 text-slate-950 font-black text-xs rounded-xl shadow-lg transition-all"
+                className={`w-full py-3 font-black text-xs rounded-xl shadow-lg transition-all ${
+                  actionMode === 'add'
+                    ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 hover:from-amber-400'
+                    : 'bg-rose-600 text-white hover:bg-rose-500'
+                }`}
               >
-                ¡Entregar Recompensas!
+                {actionMode === 'add' ? '¡ENTREGAR BENEFICIOS!' : '¡QUITAR PUNTOS / SOBRES!'}
               </button>
             </form>
           </div>
 
+          {/* Users Inspection & Quick Modify Buttons */}
           <div className="lg:col-span-2 bg-slate-900/90 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
             <h3 className="font-display font-extrabold text-base text-white flex items-center gap-2">
               <Users className="w-5 h-5 text-rose-400" />
-              Lista de Coleccionistas Registrados
+              Acciones Rápidas por Usuario
             </h3>
 
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="border-b border-slate-800 text-slate-400">
-                    <th className="py-2 px-3">Usuario</th>
-                    <th className="py-2 px-3">Rol</th>
-                    <th className="py-2 px-3">Pegados</th>
-                    <th className="py-2 px-3">Sobres</th>
-                    <th className="py-2 px-3">Puntos</th>
-                    <th className="py-2 px-3 text-right">Acciones</th>
+                    <th className="py-2.5 px-3">Usuario</th>
+                    <th className="py-2.5 px-3">Puntos</th>
+                    <th className="py-2.5 px-3">Sobres</th>
+                    <th className="py-2.5 px-3 text-right">Modificar Puntos</th>
+                    <th className="py-2.5 px-3 text-right">Modificar Sobres</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
                   {usersList.map(u => (
                     <tr key={u.id} className="hover:bg-slate-950/40">
-                      <td className="py-2.5 px-3 font-bold text-white">{u.username}</td>
-                      <td className="py-2.5 px-3">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                          u.role === 'admin' ? 'bg-rose-950 text-rose-400 border border-rose-800' : 'bg-slate-800 text-slate-300'
-                        }`}>
-                          {u.role}
-                        </span>
+                      <td className="py-3 px-3">
+                        <span className="font-bold text-white block">{u.username}</span>
+                        <span className="text-[10px] text-slate-500">{u.role}</span>
                       </td>
-                      <td className="py-2.5 px-3 font-mono font-bold text-amber-400">
-                        {u.pastedStickers?.length || 0} / {stickers.length}
+
+                      <td className="py-3 px-3 font-mono font-bold text-amber-400">
+                        {u.coins} pts
                       </td>
-                      <td className="py-2.5 px-3 font-mono font-bold text-slate-200">{u.packsCount}</td>
-                      <td className="py-2.5 px-3 font-mono font-bold text-yellow-400">{u.coins}</td>
-                      <td className="py-2.5 px-3 text-right">
-                        <button
-                          onClick={() => {
-                            setTargetUser(u.username);
-                            handleTakeSticker(1);
-                          }}
-                          className="px-2 py-1 bg-rose-950 hover:bg-rose-900 text-rose-300 rounded text-[10px] font-bold"
-                        >
-                          Quitar #1
-                        </button>
+
+                      <td className="py-3 px-3 font-mono font-bold text-slate-200">
+                        {u.packsCount}
                       </td>
+
+                      {/* Quick Points +/- Buttons */}
+                      <td className="py-3 px-3 text-right">
+                        <div className="inline-flex items-center gap-1">
+                          <button
+                            onClick={() => handleQuickModifyPoints(u.username, -500, 0)}
+                            className="px-2 py-1 bg-rose-950 hover:bg-rose-900 text-rose-300 border border-rose-800/80 rounded text-[10px] font-bold"
+                            title="Quitar 500 Puntos"
+                          >
+                            -500 Pts
+                          </button>
+                          <button
+                            onClick={() => handleQuickModifyPoints(u.username, 500, 0)}
+                            className="px-2 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/40 rounded text-[10px] font-bold"
+                            title="Dar 500 Puntos"
+                          >
+                            +500 Pts
+                          </button>
+                        </div>
+                      </td>
+
+                      {/* Quick Packs +/- Buttons */}
+                      <td className="py-3 px-3 text-right">
+                        <div className="inline-flex items-center gap-1">
+                          <button
+                            onClick={() => handleQuickModifyPoints(u.username, 0, -5)}
+                            className="px-2 py-1 bg-rose-950 hover:bg-rose-900 text-rose-300 border border-rose-800/80 rounded text-[10px] font-bold"
+                            title="Quitar 5 Sobres"
+                          >
+                            -5 Sobres
+                          </button>
+                          <button
+                            onClick={() => handleQuickModifyPoints(u.username, 0, 5)}
+                            className="px-2 py-1 bg-cyan-950 hover:bg-cyan-900 text-cyan-300 border border-cyan-800/80 rounded text-[10px] font-bold"
+                            title="Dar 5 Sobres"
+                          >
+                            +5 Sobres
+                          </button>
+                        </div>
+                      </td>
+
                     </tr>
                   ))}
                 </tbody>
@@ -504,11 +612,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
         </div>
       )}
 
-      {/* TAB 2: Sticker Management & Direct Mobile File Upload & Background Themes */}
+      {/* TAB 2: Sticker Management */}
       {activeTab === 'stickers' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
-          {/* Sticker Form */}
           <div className="lg:col-span-1 bg-slate-900/90 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
             <h3 className="font-display font-extrabold text-base text-white">
               {editingSticker.id ? 'Editar Cromo & Fondo' : 'Crear Cromo & Fondo'}
@@ -527,7 +634,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-slate-400 mb-1">Nombre del Jugador / Elemento</label>
+                <label className="block text-[11px] font-bold text-slate-400 mb-1">Nombre del Jugador</label>
                 <input
                   type="text"
                   required
@@ -537,11 +644,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
                 />
               </div>
 
-              {/* Mobile / PC File Picker for Sticker Photo */}
               <div className="p-3 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
                 <label className="block text-[11px] font-bold text-amber-400 flex items-center gap-1.5">
                   <Upload className="w-4 h-4 text-amber-400" />
-                  <span>Subir Foto del Jugador (desde Galería / Celular)</span>
+                  <span>Subir Foto del Jugador (Celular / PC)</span>
                 </label>
 
                 <input
@@ -550,20 +656,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
                   onChange={handleStickerPhotoFileUpload}
                   className="text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-amber-500 file:text-slate-950 hover:file:bg-amber-400 cursor-pointer w-full"
                 />
-
-                {editingSticker.imageUrl && (
-                  <div className="flex items-center gap-3 pt-2">
-                    <img src={editingSticker.imageUrl} alt="Preview" className="w-12 h-14 object-cover rounded-lg border border-slate-700" />
-                    <span className="text-[10px] text-emerald-400 font-bold">✓ Foto seleccionada</span>
-                  </div>
-                )}
               </div>
 
-              {/* Admin Custom Sticker Background Picker */}
               <div className="p-3 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
                 <label className="block text-[11px] font-bold text-emerald-400 flex items-center gap-1.5">
                   <Palette className="w-4 h-4 text-emerald-400" />
-                  <span>Fondo de la Estampilla (Admin)</span>
+                  <span>Fondo de la Estampilla</span>
                 </label>
 
                 <select
@@ -579,7 +677,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
                   <option value="custom_bg">Imagen Personalizada Subida</option>
                 </select>
 
-                {/* Subir imagen de fondo desde celular */}
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 mb-1">
                     Subir Imagen de Fondo Personalizada (Celular / PC)
@@ -593,51 +690,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-400 mb-1">Categoría</label>
-                  <input
-                    type="text"
-                    value={editingSticker.category || ''}
-                    onChange={e => setEditingSticker({ ...editingSticker, category: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-400 mb-1">Equipo / País</label>
-                  <input
-                    type="text"
-                    value={editingSticker.team || ''}
-                    onChange={e => setEditingSticker({ ...editingSticker, team: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-400 mb-1">Posición</label>
-                  <input
-                    type="text"
-                    value={editingSticker.position || ''}
-                    onChange={e => setEditingSticker({ ...editingSticker, position: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-400 mb-1">Rareza</label>
-                  <select
-                    value={editingSticker.rarity || 'comun'}
-                    onChange={e => setEditingSticker({ ...editingSticker, rarity: e.target.value as any })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white"
-                  >
-                    <option value="comun">Común</option>
-                    <option value="rara">Rara</option>
-                    <option value="dorada_holo">Dorada Holo</option>
-                  </select>
-                </div>
-              </div>
-
               <button
                 type="submit"
                 className="w-full py-3 bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 text-white font-bold text-xs rounded-xl shadow transition-all"
@@ -647,7 +699,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
             </form>
           </div>
 
-          {/* Stickers List */}
           <div className="lg:col-span-2 bg-slate-900/90 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
             <h3 className="font-display font-extrabold text-base text-white">
               Catálogo de Cromos ({stickers.length})
@@ -699,7 +750,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
             <div>
               <h3 className="font-display font-extrabold text-xl text-white">Generador de Cromos con Gemini AI</h3>
               <p className="text-xs text-slate-400">
-                Escribe la descripción de un jugador o stadium mítico y Gemini creará las estadísticas y detalles.
+                Escribe la descripción de un jugador o estadio y Gemini creará las estadísticas y detalles.
               </p>
             </div>
           </div>
@@ -709,7 +760,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
               rows={3}
               value={aiPrompt}
               onChange={e => setAiPrompt(e.target.value)}
-              placeholder="Ej. Delantero estrella de Japón con 98 de velocidad o Portero legendario de Paraguay"
+              placeholder="Ej. Delantero estrella de Japón con 98 de velocidad"
               className="w-full p-3 bg-slate-950 border border-slate-800 rounded-2xl text-xs text-white focus:border-amber-500 focus:outline-none"
             />
 
@@ -773,43 +824,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white"
                 />
               </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-emerald-400 mb-1">Cromo Garantizado (opcional)</label>
-              <select
-                value={newCodeStickerNum}
-                onChange={e => setNewCodeStickerNum(Number(e.target.value))}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white"
-              >
-                <option value={0}>Ningún cromo en particular</option>
-                {stickers.map(s => (
-                  <option key={s.number} value={s.number}>
-                    #{s.number} - {s.name} ({s.rarity})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-300 mb-1">Límite Máximo de Usos</label>
-              <input
-                type="number"
-                value={newCodeMaxUses}
-                onChange={e => setNewCodeMaxUses(Number(e.target.value))}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-300 mb-1">Descripción</label>
-              <input
-                type="text"
-                value={newCodeDesc}
-                onChange={e => setNewCodeDesc(e.target.value)}
-                placeholder="Premio especial para coleccionistas"
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white"
-              />
             </div>
 
             <button

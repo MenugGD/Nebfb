@@ -60,6 +60,25 @@
         "description": { "type": "string", "maxLength": 200 }
       },
       "required": ["code", "rewardPacks", "rewardCoins", "maxUses", "timesUsed", "description"]
+    },
+    "RaceMatch": {
+      "title": "Aquapark Race Match",
+      "description": "Real-time 1v1 online slide race lobby and match state.",
+      "type": "object",
+      "properties": {
+        "hostUsername": { "type": "string", "maxLength": 64 },
+        "hostUid": { "type": "string", "maxLength": 128 },
+        "guestUsername": { "type": "string", "maxLength": 64 },
+        "guestUid": { "type": "string", "maxLength": 128 },
+        "wager": { "type": "number" },
+        "status": { "type": "string", "enum": ["waiting", "racing", "finished", "cancelled"] },
+        "hostPos": { "type": "number" },
+        "guestPos": { "type": "number" },
+        "winnerUid": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["hostUsername", "hostUid", "wager", "status", "createdAt"]
     }
   },
   "firestore": {
@@ -78,6 +97,10 @@
     "/codes/{codeId}": {
       "schema": { "$ref": "#/entities/RedeemCode" },
       "description": "Redeemable promo codes."
+    },
+    "/raceMatches/{matchId}": {
+      "schema": { "$ref": "#/entities/RaceMatch" },
+      "description": "Online 1v1 race matches."
     }
   }
 }

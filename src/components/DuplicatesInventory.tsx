@@ -46,7 +46,7 @@ export const DuplicatesInventory: React.FC<DuplicatesInventoryProps> = ({
     return { number: stNum, count: Number(count), sticker };
   }).filter(item => item.count > 0 && item.sticker) as { number: number; count: number; sticker: Sticker }[];
 
-  const pastedSet = new Set(user.pastedStickers);
+  const pastedSet = new Set(user?.pastedStickers || []);
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 pb-12">
