@@ -1127,26 +1127,94 @@ app.post('/api/admin/stickers/restore-default', verifyAdmin, (_req: Request, res
   return res.json({ success: true, stickers: db.stickers });
 });
 
+app.post('/api/admin/users/reset', verifyAdmin, (req: Request, res: Response) => {
+  const { targetUsername } = req.body;
+  const db = getDB();
+  const target = db.users.find(u => u.username.toLowerCase() === (targetUsername || '').toLowerCase());
+  if (!target) return res.status(404).json({ error: 'Usuario destino no encontrado.' });
+
+  target.coins = 0;
+  target.packsCount = 0;
+  target.pastedStickers = [];
+  target.duplicates = {};
+  target.redeemedCodes = [];
+
+  saveDB(db);
+  const { password: _, ...safeUser } = target;
+  return res.json({ success: true, user: safeUser });
+});
+
+app.post('/api/admin/users/reset-all', verifyAdmin, (_req: Request, res: Response) => {
+  const db = getDB();
+  db.users.forEach(u => {
+    const isAdmin = u.username.toLowerCase() === 'menugddlc';
+    u.coins = isAdmin ? 5000 : 0;
+    u.packsCount = isAdmin ? 20 : 0;
+    u.pastedStickers = [];
+    u.duplicates = {};
+    u.redeemedCodes = [];
+  });
+
+  saveDB(db);
+  return res.json({ success: true });
+});
+
 app.post('/api/admin/codes/create', verifyAdmin, (req: Request, res: Response) => {
   const { code, rewardPacks, rewardCoins, rewardStickerNumber, maxUses, description } = req.body;
   if (!code) return res.status(400).json({ error: 'Escribe el código canjeable.' });
 
   const cleanCode = code.trim().toUpperCase();
   const db = getDB();
-  const existing = db.codes.find(c => c.code === cleanCode);
-  if (existing) return res.status(400).json({ error: 'Ese código ya existe.' });
+  let existing = db.codes.find(c => c.code === cleanCode);
+  if (existing) {
+    existing.rewardPacks = Number(rewardPacks) || 0;
+    existing.rewardCoins = Number(rewardCoins) || 0;
+    existing.rewardStickerNumber = rewardStickerNumber ? Number(rewardStickerNumber) : undefined;
+    existing.maxUses = Number(maxUses) || 100;
+    existing.description = description || existing.description;
+  } else {
+    const newCode: RedeemCodeData = {
+      code: cleanCode,
+      rewardPacks: Number(rewardPacks) || 0,
+      rewardCoins: Number(rewardCoins) || 0,
+      rewardStickerNumber: rewardStickerNumber ? Number(rewardStickerNumber) : undefined,
+      maxUses: Number(maxUses) || 100,
+      timesUsed: 0,
+      description: description || 'Código creado por el Administrador MenugDDLC'
+    };
+    db.codes.push(newCode);
+  }
 
-  const newCode: RedeemCodeData = {
-    code: cleanCode,
-    rewardPacks: Number(rewardPacks) || 0,
-    rewardCoins: Number(rewardCoins) || 0,
-    rewardStickerNumber: rewardStickerNumber ? Number(rewardStickerNumber) : undefined,
-    maxUses: Number(maxUses) || 100,
-    timesUsed: 0,
-    description: description || 'Código creado por el Administrador MenugDDLC'
-  };
+  saveDB(db);
+  return res.json({ success: true, codes: db.codes });
+});
 
-  db.codes.push(newCode);
+app.post('/api/admin/codes/save', verifyAdmin, (req: Request, res: Response) => {
+  const { code, rewardPacks, rewardCoins, rewardStickerNumber, maxUses, description } = req.body;
+  if (!code) return res.status(400).json({ error: 'Escribe el código canjeable.' });
+
+  const cleanCode = code.trim().toUpperCase();
+  const db = getDB();
+  let existing = db.codes.find(c => c.code === cleanCode);
+  if (existing) {
+    existing.rewardPacks = Number(rewardPacks) || 0;
+    existing.rewardCoins = Number(rewardCoins) || 0;
+    existing.rewardStickerNumber = rewardStickerNumber ? Number(rewardStickerNumber) : undefined;
+    existing.maxUses = Number(maxUses) || 100;
+    existing.description = description || existing.description;
+  } else {
+    const newCode: RedeemCodeData = {
+      code: cleanCode,
+      rewardPacks: Number(rewardPacks) || 0,
+      rewardCoins: Number(rewardCoins) || 0,
+      rewardStickerNumber: rewardStickerNumber ? Number(rewardStickerNumber) : undefined,
+      maxUses: Number(maxUses) || 100,
+      timesUsed: 0,
+      description: description || 'Código creado por el Administrador MenugDDLC'
+    };
+    db.codes.push(newCode);
+  }
+
   saveDB(db);
   return res.json({ success: true, codes: db.codes });
 });

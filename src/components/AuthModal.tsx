@@ -77,31 +77,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         {/* Form Body */}
         <div className="p-6 space-y-5">
 
-          {/* Quick Admin Shortcut Box */}
-          <div className="p-3 bg-rose-950/40 border border-rose-800/50 rounded-2xl flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 text-xs">
-              <Shield className="w-4 h-4 text-rose-400 shrink-0" />
-              <div>
-                <span className="font-bold text-rose-200 block">Acceso Admin Supremo</span>
-                <span className="text-[11px] text-rose-300/80">MenugDDLC / Menug1011</span>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={handleAdminPreset}
-              className="px-3 py-1.5 text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white rounded-xl transition-colors whitespace-nowrap shadow"
-            >
-              Autocompletar
-            </button>
-          </div>
-
           {error && (
             <div className="p-3 bg-red-950/60 border border-red-800/60 rounded-xl text-xs text-red-300 font-medium">
               {error}
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
             <div>
               <label className="block text-xs font-bold text-slate-300 mb-1">
                 Nombre de Usuario
@@ -111,6 +93,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                 <input
                   type="text"
                   required
+                  autoComplete="off"
                   value={username}
                   onChange={e => setUsername(e.target.value)}
                   placeholder="Ej. MenugDDLC o Golazo2026"
@@ -128,6 +111,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                 <input
                   type="password"
                   required
+                  autoComplete="new-password"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   placeholder="Ingresa tu clave"

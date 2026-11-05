@@ -555,6 +555,54 @@ export async function adminRemoveUserSticker(
   }
 }
 
+// Reset individual user account (clears coins, packs, pasted stickers, duplicates, and redeemed codes)
+export async function adminResetUserAccountInFirestore(targetUsername: string): Promise<User | null> {
+  try {
+    const q = query(collection(db, 'users'), where('username', '==', targetUsername.trim()));
+    const snap = await getDocs(q);
+    if (snap.empty) return null;
+
+    const userDoc = snap.docs[0];
+    const data = userDoc.data() as User;
+
+    const resetUser: User = {
+      ...data,
+      coins: 0,
+      packsCount: 0,
+      pastedStickers: [],
+      duplicates: {},
+      redeemedCodes: []
+    };
+
+    await setDoc(userDoc.ref, resetUser, { merge: true });
+    return resetUser;
+  } catch (error) {
+    logFirestoreError(error, 'adminResetUserAccountInFirestore');
+    return null;
+  }
+}
+
+// Universal reset for ALL user accounts in Firestore
+export async function adminResetAllUsersInFirestore(): Promise<void> {
+  try {
+    const snap = await getDocs(collection(db, 'users'));
+    const updateOps = snap.docs.map(userDoc => {
+      const data = userDoc.data() as User;
+      const isAdmin = (data.username || '').toLowerCase() === 'menugddlc';
+      return setDoc(userDoc.ref, {
+        coins: isAdmin ? 5000 : 0,
+        packsCount: isAdmin ? 20 : 0,
+        pastedStickers: [],
+        duplicates: {},
+        redeemedCodes: []
+      }, { merge: true });
+    });
+    await Promise.all(updateOps);
+  } catch (error) {
+    logFirestoreError(error, 'adminResetAllUsersInFirestore');
+  }
+}
+
 // Promo Codes in Firestore
 export async function saveCodeToFirestore(codeData: RedeemCode): Promise<void> {
   try {
@@ -562,7 +610,7 @@ export async function saveCodeToFirestore(codeData: RedeemCode): Promise<void> {
     await setDoc(doc(db, 'codes', cleanCode), {
       ...codeData,
       code: cleanCode
-    });
+    }, { merge: true });
   } catch (error) {
     logFirestoreError(error, 'saveCodeToFirestore');
   }
@@ -622,5 +670,20 @@ export async function getFirestoreCodes(): Promise<RedeemCode[]> {
       description: 'Premio dorado: 1000 Monedas + Cromo Lamine Yamal Holo'
     }
   ];
+}
+
+// Real-time subscription to Redeem Codes in Firestore
+export function subscribeFirestoreCodes(callback: (codes: RedeemCode[]) => void) {
+  try {
+    return onSnapshot(collection(db, 'codes'), (snapshot) => {
+      const list = snapshot.docs.map(d => d.data() as RedeemCode);
+      callback(list);
+    }, (error) => {
+      logFirestoreError(error, 'subscribeCodes');
+    });
+  } catch (error) {
+    logFirestoreError(error, 'subscribeCodesInit');
+    return () => {};
+  }
 }
 

@@ -33,7 +33,12 @@ import {
   getFirestoreUsers,
   adminModifyUserInFirestore,
   adminRemoveUserSticker,
-  saveCodeToFirestore
+  adminResetUserAccountInFirestore,
+  adminResetAllUsersInFirestore,
+  saveCodeToFirestore,
+  deleteCodeFromFirestore,
+  getFirestoreCodes,
+  subscribeFirestoreCodes
 } from '../services/firebaseService';
 import { getCardThemeStyle, CARD_THEME_PRESETS } from '../utils/cardThemes';
 import { compressImageFile } from '../utils/imageCompressor';
@@ -89,7 +94,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [aiPrompt, setAiPrompt] = useState('');
   const [generatingAi, setGeneratingAi] = useState(false);
 
-  // Code creation state
+  // Code creation and edit state
+  const [codesList, setCodesList] = useState<RedeemCode[]>([]);
+  const [editingCodeKey, setEditingCodeKey] = useState<string | null>(null);
   const [newCodeName, setNewCodeName] = useState('');
   const [newCodePacks, setNewCodePacks] = useState(5);
   const [newCodeCoins, setNewCodeCoins] = useState(300);
@@ -99,6 +106,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   useEffect(() => {
     fetchUsers();
+
+    // Subscribe to live promo codes in Firestore
+    const unsubCodes = subscribeFirestoreCodes((liveCodes) => {
+      setCodesList(liveCodes);
+    });
+
+    return () => {
+      if (typeof unsubCodes === 'function') unsubCodes();
+    };
   }, []);
 
   const fetchUsers = async () => {
@@ -291,6 +307,65 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       onRefreshData();
     } catch (err: any) {
       setMsg({ text: err.message || 'Error al retirar cromo', isError: true });
+    }
+  };
+
+  const handleResetIndividualUser = async (targetUsername: string) => {
+    if (!confirm(`⚠️ ¿Deseas vaciar por completo la cuenta de ${targetUsername}?\nSe eliminarán todos sus sobres, puntos, cromos repetidos y cromos pegados en su álbum.`)) {
+      return;
+    }
+    setMsg(null);
+    try {
+      // 1. Reset in Firebase Firestore
+      await adminResetUserAccountInFirestore(targetUsername);
+
+      // 2. Safe background Express sync
+      safeFetchJson('/api/admin/users/reset', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-user': user?.username || ''
+        },
+        body: JSON.stringify({ targetUsername })
+      }).catch(() => {});
+
+      sounds.playPackTear();
+      setMsg({ text: `¡La cuenta de ${targetUsername} ha sido vaciada y reseteada por completo!` });
+      fetchUsers();
+      onRefreshData();
+    } catch (err: any) {
+      setMsg({ text: err.message || 'Error al resetear la cuenta', isError: true });
+    }
+  };
+
+  const handleResetAllUsers = async () => {
+    if (!confirm('⚠️ ALERTA SUPREMA: ¿Seguro que deseas VACIAR Y RESETEAR TODAS LAS CUENTAS del sistema?\nSe vaciarán sobres, puntos, repetidas y cromos pegados de todos los usuarios en Firebase.')) {
+      return;
+    }
+    if (!confirm('⚠️ CONFIRMACIÓN FINAL: Esta acción no se puede deshacer. ¿Proceder con el reseteo universal?')) {
+      return;
+    }
+
+    setMsg(null);
+    try {
+      // 1. Universal Reset in Firebase Firestore
+      await adminResetAllUsersInFirestore();
+
+      // 2. Safe background Express sync
+      safeFetchJson('/api/admin/users/reset-all', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-user': user?.username || ''
+        }
+      }).catch(() => {});
+
+      sounds.playPackTear();
+      setMsg({ text: '¡TODAS las cuentas del sistema han sido vaciadas y reseteadas en Firebase con éxito!' });
+      fetchUsers();
+      onRefreshData();
+    } catch (err: any) {
+      setMsg({ text: err.message || 'Error al resetear todas las cuentas', isError: true });
     }
   };
 
@@ -566,19 +641,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
-  const handleCreateCode = async (e: React.FormEvent) => {
+  const handleSaveCode = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCodeName.trim()) return;
     setMsg(null);
     try {
       const cleanCode = newCodeName.trim().toUpperCase();
+      const existing = codesList.find(c => c.code === cleanCode);
+
       const codeObj: RedeemCode = {
         code: cleanCode,
         rewardPacks: Number(newCodePacks) || 0,
         rewardCoins: Number(newCodeCoins) || 0,
         rewardStickerNumber: newCodeStickerNum > 0 ? newCodeStickerNum : undefined,
         maxUses: Number(newCodeMaxUses) || 100,
-        timesUsed: 0,
+        timesUsed: existing ? existing.timesUsed : 0,
         description: newCodeDesc || `Código creado por MenugDDLC`
       };
 
@@ -586,7 +663,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       await saveCodeToFirestore(codeObj);
 
       // 2. Safe background Express sync
-      safeFetchJson('/api/admin/codes/create', {
+      safeFetchJson('/api/admin/codes/save', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -595,11 +672,55 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         body: JSON.stringify(codeObj)
       }).catch(() => {});
 
-      setMsg({ text: `Código ${cleanCode} creado con éxito y guardado en Firebase.` });
+      sounds.playCoin();
+      setMsg({ text: `Código ${cleanCode} guardado con éxito en Firebase.` });
+      setEditingCodeKey(null);
       setNewCodeName('');
+      setNewCodePacks(5);
+      setNewCodeCoins(300);
+      setNewCodeStickerNum(0);
+      setNewCodeMaxUses(100);
       setNewCodeDesc('');
     } catch (err: any) {
-      setMsg({ text: err.message || 'Error al crear código', isError: true });
+      setMsg({ text: err.message || 'Error al guardar código', isError: true });
+    }
+  };
+
+  const handleStartEditCode = (code: RedeemCode) => {
+    setEditingCodeKey(code.code);
+    setNewCodeName(code.code);
+    setNewCodePacks(code.rewardPacks);
+    setNewCodeCoins(code.rewardCoins);
+    setNewCodeStickerNum(code.rewardStickerNumber || 0);
+    setNewCodeMaxUses(code.maxUses);
+    setNewCodeDesc(code.description);
+  };
+
+  const handleDeleteCode = async (codeStr: string) => {
+    if (!confirm(`¿Eliminar el código ${codeStr}?`)) return;
+    setMsg(null);
+    try {
+      // 1. Delete from Firebase Firestore
+      await deleteCodeFromFirestore(codeStr);
+
+      // 2. Safe background Express sync
+      safeFetchJson('/api/admin/codes/delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-user': user?.username || ''
+        },
+        body: JSON.stringify({ code: codeStr })
+      }).catch(() => {});
+
+      sounds.playPackTear();
+      setMsg({ text: `Código ${codeStr} eliminado de Firebase con éxito.` });
+      if (editingCodeKey === codeStr) {
+        setEditingCodeKey(null);
+        setNewCodeName('');
+      }
+    } catch (err: any) {
+      setMsg({ text: err.message || 'Error al eliminar código', isError: true });
     }
   };
 
@@ -810,10 +931,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
           {/* Users Inspection & Quick Modify Buttons */}
           <div className="lg:col-span-2 bg-slate-900/90 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
-            <h3 className="font-display font-extrabold text-base text-white flex items-center gap-2">
-              <Users className="w-5 h-5 text-rose-400" />
-              Acciones Rápidas por Usuario
-            </h3>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+              <h3 className="font-display font-extrabold text-base text-white flex items-center gap-2">
+                <Users className="w-5 h-5 text-rose-400" />
+                Acciones Rápidas por Usuario
+              </h3>
+              <button
+                type="button"
+                onClick={handleResetAllUsers}
+                className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-black shadow-lg shadow-rose-600/30 flex items-center gap-1.5 transition-all animate-pulse"
+                title="Vaciar sobres, puntos y repetidas de TODAS las cuentas en Firebase"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>⚠️ RESETEAR TODAS LAS CUENTAS</span>
+              </button>
+            </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
@@ -824,6 +956,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <th className="py-2.5 px-3">Sobres</th>
                     <th className="py-2.5 px-3 text-right">Modificar Puntos</th>
                     <th className="py-2.5 px-3 text-right">Modificar Sobres</th>
+                    <th className="py-2.5 px-3 text-right">Resetear</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
@@ -882,6 +1015,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         </div>
                       </td>
 
+                      {/* Individual Reset Account Button */}
+                      <td className="py-3 px-3 text-right">
+                        <button
+                          onClick={() => handleResetIndividualUser(u.username)}
+                          className="px-2 py-1 bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-800/80 rounded text-[10px] font-bold inline-flex items-center gap-1 transition-colors"
+                          title={`Vaciar sobres, puntos y cromos de ${u.username}`}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>Vaciar</span>
+                        </button>
+                      </td>
+
                     </tr>
                   ))}
                 </tbody>
@@ -936,11 +1081,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </span>
                 </div>
                 <div className="my-auto py-1 z-10">
-                  <div className="w-full h-28 rounded-lg overflow-hidden border border-slate-700/80 bg-slate-950/40">
+                  <div className="w-full h-28 rounded-xl overflow-hidden shadow-md">
                     <img
                       src={editingSticker.imageUrl || 'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=400&q=80'}
                       alt="Vista previa"
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover rounded-xl"
                     />
                   </div>
                 </div>
@@ -1258,7 +1403,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         <img
                           src={st.imageUrl}
                           alt={st.name}
-                          className="w-full h-24 object-cover rounded-lg my-1 border border-slate-700/60"
+                          className="w-full h-24 object-cover rounded-xl my-0.5"
                         />
                         <h5 className="font-bold text-xs text-white truncate">{st.name}</h5>
                         <p className="text-[10px] text-amber-300/80">{st.team} · {st.position}</p>
@@ -1337,55 +1482,185 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
       {/* TAB 4: Redeem Code Manager */}
       {activeTab === 'codes' && (
-        <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-8 space-y-6 shadow-xl max-w-xl mx-auto">
-          <h3 className="font-display font-extrabold text-lg text-white flex items-center gap-2">
-            <KeyRound className="w-5 h-5 text-amber-400" />
-            Crear Nuevo Código Canjeable
-          </h3>
-
-          <form onSubmit={handleCreateCode} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-amber-400 mb-1">Nombre del Código (ej. MENUG1011)</label>
-              <input
-                type="text"
-                required
-                value={newCodeName}
-                onChange={e => setNewCodeName(e.target.value.toUpperCase())}
-                placeholder="NUEVOCÓDIGO2026"
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-amber-400 font-mono font-bold"
-              />
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          
+          {/* Column 1: Create / Edit Code Form */}
+          <div className="lg:col-span-5 bg-slate-900/90 border border-slate-800 rounded-3xl p-6 space-y-5 shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="font-display font-extrabold text-base text-white flex items-center gap-2">
+                <KeyRound className="w-5 h-5 text-amber-400" />
+                <span>{editingCodeKey ? `Editar Código: ${editingCodeKey}` : 'Crear Código Canjeable'}</span>
+              </h3>
+              {editingCodeKey && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingCodeKey(null);
+                    setNewCodeName('');
+                    setNewCodePacks(5);
+                    setNewCodeCoins(300);
+                    setNewCodeStickerNum(0);
+                    setNewCodeMaxUses(100);
+                    setNewCodeDesc('');
+                  }}
+                  className="text-[10px] text-slate-400 hover:text-white underline"
+                >
+                  Cancelar Edición
+                </button>
+              )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <form onSubmit={handleSaveCode} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1">Sobres de Regalo</label>
+                <label className="block text-xs font-bold text-amber-400 mb-1">Nombre del Código</label>
                 <input
-                  type="number"
-                  min="0"
-                  value={newCodePacks}
-                  onChange={e => setNewCodePacks(Number(e.target.value))}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white"
+                  type="text"
+                  required
+                  value={newCodeName}
+                  onChange={e => setNewCodeName(e.target.value.toUpperCase())}
+                  placeholder="ej. MUNDIAL2026"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-amber-400 font-mono font-bold focus:border-amber-500 focus:outline-none"
                 />
               </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Sobres de Regalo</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={newCodePacks}
+                    onChange={e => setNewCodePacks(Number(e.target.value))}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-yellow-400 mb-1">Puntos de Regalo</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={newCodeCoins}
+                    onChange={e => setNewCodeCoins(Number(e.target.value))}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-mono font-bold"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-emerald-400 mb-1">Cromo Bonus (#)</label>
+                  <select
+                    value={newCodeStickerNum}
+                    onChange={e => setNewCodeStickerNum(Number(e.target.value))}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white"
+                  >
+                    <option value={0}>Sin Cromo Bonus</option>
+                    {stickers.map(s => (
+                      <option key={s.number} value={s.number}>
+                        #{s.number} - {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-cyan-400 mb-1">Canjes Máximos</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={newCodeMaxUses}
+                    onChange={e => setNewCodeMaxUses(Number(e.target.value))}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-mono font-bold"
+                  />
+                </div>
+              </div>
+
               <div>
-                <label className="block text-xs font-bold text-yellow-400 mb-1">Puntos de Regalo</label>
+                <label className="block text-xs font-bold text-slate-300 mb-1">Descripción del Código</label>
                 <input
-                  type="number"
-                  min="0"
-                  value={newCodeCoins}
-                  onChange={e => setNewCodeCoins(Number(e.target.value))}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white"
+                  type="text"
+                  value={newCodeDesc}
+                  onChange={e => setNewCodeDesc(e.target.value)}
+                  placeholder="ej. Premio especial de bienvenida..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white"
                 />
               </div>
+
+              <button
+                type="submit"
+                className="w-full py-3.5 bg-gradient-to-r from-rose-600 to-amber-500 hover:from-rose-500 text-white font-black text-xs rounded-xl shadow-lg transition-all"
+              >
+                {editingCodeKey ? 'Guardar Cambios en Código' : 'Publicar Nuevo Código en Firebase'}
+              </button>
+            </form>
+          </div>
+
+          {/* Column 2: Existing Codes Table & Management */}
+          <div className="lg:col-span-7 bg-slate-900/90 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="font-display font-extrabold text-base text-white flex items-center gap-2">
+                <KeyRound className="w-5 h-5 text-amber-400" />
+                <span>Códigos Activos en Firebase ({codesList.length})</span>
+              </h3>
             </div>
 
-            <button
-              type="submit"
-              className="w-full py-3 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl shadow transition-all"
-            >
-              Publicar Código
-            </button>
-          </form>
+            {codesList.length === 0 ? (
+              <p className="text-xs text-slate-400 py-6 text-center">No hay códigos canjeables creados.</p>
+            ) : (
+              <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
+                {codesList.map(c => (
+                  <div
+                    key={c.code}
+                    className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 transition-all ${
+                      editingCodeKey === c.code
+                        ? 'border-amber-400 bg-amber-500/10'
+                        : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-black text-sm text-amber-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                          {c.code}
+                        </span>
+                        <span className="text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full font-mono">
+                          Usos: {c.timesUsed || 0}/{c.maxUses || '∞'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-300 font-medium">{c.description}</p>
+                      <div className="flex items-center gap-3 text-[11px] font-mono font-bold text-slate-400 pt-0.5">
+                        <span className="text-cyan-400">+{c.rewardPacks} Sobres</span>
+                        <span className="text-yellow-400">+{c.rewardCoins} Pts</span>
+                        {c.rewardStickerNumber && (
+                          <span className="text-emerald-400">Cromo #{c.rewardStickerNumber}</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                      <button
+                        type="button"
+                        onClick={() => handleStartEditCode(c)}
+                        className="px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-xl text-xs font-bold flex items-center gap-1 transition-colors"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                        <span>Editar</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCode(c.code)}
+                        className="px-3 py-1.5 bg-rose-950 hover:bg-rose-900 text-rose-300 border border-rose-800/80 rounded-xl text-xs font-bold flex items-center gap-1 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Borrar</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
         </div>
       )}
 
@@ -1442,11 +1717,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
 
                   <div className="my-auto py-2 z-10">
-                    <div className="w-full h-44 rounded-xl overflow-hidden border border-slate-700/80 shadow-inner bg-slate-950/40">
+                    <div className="w-full h-44 rounded-xl overflow-hidden shadow-md">
                       <img
                         src={editingSticker.imageUrl || 'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=400&q=80'}
                         alt={editingSticker.name || 'Cromo'}
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-cover rounded-xl"
                       />
                     </div>
                   </div>

@@ -253,11 +253,11 @@ export const PackOpener: React.FC<PackOpenerProps> = ({
                             )}
                           </div>
 
-                          <div className="w-full h-32 rounded-xl overflow-hidden my-2 border border-slate-800 shadow-inner">
+                          <div className="w-full h-32 rounded-xl overflow-hidden my-1 shadow-md">
                             <img
                               src={sticker.imageUrl}
                               alt={sticker.name}
-                              className="w-full h-full object-cover"
+                              className="w-full h-full object-cover rounded-xl"
                             />
                           </div>
 

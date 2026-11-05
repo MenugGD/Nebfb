@@ -111,13 +111,13 @@ export const DuplicatesInventory: React.FC<DuplicatesInventoryProps> = ({
                     </span>
                   </div>
 
-                  <div className={`w-full h-36 rounded-xl overflow-hidden my-2 border ${
-                    isHolo ? 'border-amber-400 animate-holo p-0.5' : 'border-slate-800'
+                  <div className={`w-full h-36 rounded-xl overflow-hidden my-1 ${
+                    isHolo ? 'ring-2 ring-amber-400 animate-holo' : ''
                   }`}>
                     <img
                       src={sticker.imageUrl}
                       alt={sticker.name}
-                      className="w-full h-full object-cover rounded-lg"
+                      className="w-full h-full object-cover rounded-xl"
                     />
                   </div>
 

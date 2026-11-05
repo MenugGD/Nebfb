@@ -224,15 +224,15 @@ export const AlbumView: React.FC<AlbumViewProps> = ({
               </div>
 
               {/* Center Content: Sticker Image or Empty Slot */}
-              <div className="relative flex-1 flex items-center justify-center my-2">
+              <div className="relative flex-1 flex items-center justify-center my-1">
                 {isPasted ? (
-                  <div className={`relative w-full h-36 rounded-xl overflow-hidden border shadow-inner ${
-                    isHolo ? 'border-amber-400 animate-holo p-0.5' : 'border-slate-700/60'
+                  <div className={`relative w-full h-36 rounded-xl overflow-hidden shadow-md ${
+                    isHolo ? 'ring-2 ring-amber-400 animate-holo' : ''
                   }`}>
                     <img
                       src={sticker.imageUrl}
                       alt={sticker.name}
-                      className="w-full h-full object-cover object-center rounded-lg group-hover:scale-105 transition-transform duration-300"
+                      className="w-full h-full object-cover object-center rounded-xl group-hover:scale-105 transition-transform duration-300"
                     />
                     {isHolo && (
                       <div className="absolute top-1 right-1 p-1 rounded-full bg-slate-950/60 text-amber-400">
@@ -241,7 +241,7 @@ export const AlbumView: React.FC<AlbumViewProps> = ({
                     )}
                   </div>
                 ) : (
-                  <div className="w-full h-36 rounded-xl bg-slate-950 border border-dashed border-slate-800 flex flex-col items-center justify-center text-center p-3">
+                  <div className="w-full h-36 rounded-xl bg-slate-950/80 border border-dashed border-slate-800 flex flex-col items-center justify-center text-center p-3">
                     <div className="w-10 h-10 rounded-full bg-slate-900 flex items-center justify-center text-slate-600 mb-2 font-mono font-bold text-sm">
                       #{sticker.number}
                     </div>

@@ -20,7 +20,7 @@ export const CARD_THEME_PRESETS: CardThemePreset[] = [
     borderColor: 'border-amber-400',
     badgeBg: 'bg-amber-500',
     badgeText: 'text-slate-950 font-black',
-    backgroundCss: 'linear-gradient(135deg, rgba(146, 64, 14, 0.75) 0%, rgba(217, 119, 6, 0.4) 50%, rgba(15, 23, 42, 0.85) 100%), url(https://images.unsplash.com/photo-1579952363873-27f3bade9f55?auto=format&fit=crop&w=600&q=80)'
+    backgroundCss: 'linear-gradient(135deg, rgba(251, 191, 36, 0.25) 0%, rgba(245, 158, 11, 0.1) 50%, rgba(217, 119, 6, 0.2) 100%), url(https://images.unsplash.com/photo-1579952363873-27f3bade9f55?auto=format&fit=crop&w=600&q=80)'
   },
   {
     id: 'emerald_stadium',
@@ -30,7 +30,7 @@ export const CARD_THEME_PRESETS: CardThemePreset[] = [
     borderColor: 'border-emerald-500',
     badgeBg: 'bg-emerald-500',
     badgeText: 'text-slate-950 font-black',
-    backgroundCss: 'linear-gradient(135deg, rgba(6, 78, 59, 0.75) 0%, rgba(5, 150, 105, 0.4) 50%, rgba(2, 44, 34, 0.9) 100%), url(https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=600&q=80)'
+    backgroundCss: 'linear-gradient(135deg, rgba(16, 185, 129, 0.25) 0%, rgba(5, 150, 105, 0.1) 50%, rgba(4, 120, 87, 0.2) 100%), url(https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=600&q=80)'
   },
   {
     id: 'cosmic_purple',
@@ -40,7 +40,7 @@ export const CARD_THEME_PRESETS: CardThemePreset[] = [
     borderColor: 'border-purple-400',
     badgeBg: 'bg-purple-600',
     badgeText: 'text-white font-bold',
-    backgroundCss: 'linear-gradient(135deg, rgba(88, 28, 135, 0.75) 0%, rgba(147, 51, 234, 0.4) 50%, rgba(15, 23, 42, 0.9) 100%), url(https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=600&q=80)'
+    backgroundCss: 'linear-gradient(135deg, rgba(168, 85, 247, 0.25) 0%, rgba(147, 51, 234, 0.1) 50%, rgba(126, 34, 206, 0.2) 100%), url(https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=600&q=80)'
   },
   {
     id: 'ruby_fire',
@@ -50,7 +50,7 @@ export const CARD_THEME_PRESETS: CardThemePreset[] = [
     borderColor: 'border-rose-500',
     badgeBg: 'bg-rose-600',
     badgeText: 'text-white font-bold',
-    backgroundCss: 'linear-gradient(135deg, rgba(159, 18, 57, 0.75) 0%, rgba(239, 68, 68, 0.4) 50%, rgba(69, 10, 10, 0.9) 100%), url(https://images.unsplash.com/photo-1516796181074-bf453fbfa3e6?auto=format&fit=crop&w=600&q=80)'
+    backgroundCss: 'linear-gradient(135deg, rgba(244, 63, 94, 0.25) 0%, rgba(225, 29, 72, 0.1) 50%, rgba(190, 18, 60, 0.2) 100%), url(https://images.unsplash.com/photo-1516796181074-bf453fbfa3e6?auto=format&fit=crop&w=600&q=80)'
   },
   {
     id: 'silver_metallic',
@@ -60,7 +60,7 @@ export const CARD_THEME_PRESETS: CardThemePreset[] = [
     borderColor: 'border-slate-300',
     badgeBg: 'bg-slate-300',
     badgeText: 'text-slate-900 font-bold',
-    backgroundCss: 'linear-gradient(135deg, rgba(51, 65, 85, 0.75) 0%, rgba(148, 163, 184, 0.4) 50%, rgba(15, 23, 42, 0.9) 100%), url(https://images.unsplash.com/photo-1522778119026-d647f0596c20?auto=format&fit=crop&w=600&q=80)'
+    backgroundCss: 'linear-gradient(135deg, rgba(203, 213, 225, 0.3) 0%, rgba(148, 163, 184, 0.15) 50%, rgba(100, 116, 139, 0.2) 100%), url(https://images.unsplash.com/photo-1522778119026-d647f0596c20?auto=format&fit=crop&w=600&q=80)'
   },
   {
     id: 'cyber_stadium',
@@ -70,7 +70,7 @@ export const CARD_THEME_PRESETS: CardThemePreset[] = [
     borderColor: 'border-cyan-400',
     badgeBg: 'bg-cyan-500',
     badgeText: 'text-slate-950 font-black',
-    backgroundCss: 'linear-gradient(135deg, rgba(8, 145, 178, 0.75) 0%, rgba(6, 182, 212, 0.4) 50%, rgba(2, 6, 23, 0.9) 100%), url(https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=600&q=80)'
+    backgroundCss: 'linear-gradient(135deg, rgba(34, 211, 238, 0.25) 0%, rgba(6, 182, 212, 0.1) 50%, rgba(14, 116, 144, 0.2) 100%), url(https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=600&q=80)'
   },
   {
     id: 'maracana_green',
@@ -80,17 +80,17 @@ export const CARD_THEME_PRESETS: CardThemePreset[] = [
     borderColor: 'border-lime-400',
     badgeBg: 'bg-lime-500',
     badgeText: 'text-slate-950 font-black',
-    backgroundCss: 'linear-gradient(135deg, rgba(202, 138, 4, 0.75) 0%, rgba(22, 163, 74, 0.4) 50%, rgba(19, 78, 74, 0.9) 100%), url(https://images.unsplash.com/photo-1518604666860-9ed391f76460?auto=format&fit=crop&w=600&q=80)'
+    backgroundCss: 'linear-gradient(135deg, rgba(234, 179, 8, 0.25) 0%, rgba(34, 197, 94, 0.1) 50%, rgba(21, 128, 61, 0.2) 100%), url(https://images.unsplash.com/photo-1518604666860-9ed391f76460?auto=format&fit=crop&w=600&q=80)'
   }
 ];
 
 export function getCardThemeStyle(sticker?: Partial<Sticker> | null): React.CSSProperties {
   if (!sticker) return {};
 
-  // 1. Custom uploaded background image
+  // 1. Custom uploaded background image (bright and clean without dark overlay)
   if (sticker.customBgUrl && sticker.customBgUrl.trim().length > 0) {
     return {
-      backgroundImage: `linear-gradient(rgba(15, 23, 42, 0.25), rgba(15, 23, 42, 0.65)), url(${sticker.customBgUrl})`,
+      backgroundImage: `url(${sticker.customBgUrl})`,
       backgroundSize: 'cover',
       backgroundPosition: 'center',
       backgroundRepeat: 'no-repeat'
@@ -111,22 +111,22 @@ export function getCardThemeStyle(sticker?: Partial<Sticker> | null): React.CSSP
   // Fallbacks for legacy theme names
   if (sticker.bgTheme === 'emerald_stadium') {
     return {
-      background: 'linear-gradient(135deg, #064e3b 0%, #022c22 100%)'
+      background: 'linear-gradient(135deg, #10b981 0%, #047857 100%)'
     };
   }
   if (sticker.bgTheme === 'cosmic_purple') {
     return {
-      background: 'linear-gradient(135deg, #4c1d95 0%, #1e1b4b 100%)'
+      background: 'linear-gradient(135deg, #a855f7 0%, #6b21a8 100%)'
     };
   }
   if (sticker.bgTheme === 'ruby_fire') {
     return {
-      background: 'linear-gradient(135deg, #881337 0%, #450a0a 100%)'
+      background: 'linear-gradient(135deg, #f43f5e 0%, #be123c 100%)'
     };
   }
   if (sticker.bgTheme === 'silver_metallic') {
     return {
-      background: 'linear-gradient(135deg, #475569 0%, #0f172a 100%)'
+      background: 'linear-gradient(135deg, #94a3b8 0%, #475569 100%)'
     };
   }
 
