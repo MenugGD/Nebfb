@@ -95,6 +95,15 @@ export default function App() {
     setStickers(prev => prev.filter(s => s.number !== stNum));
   };
 
+  const handleDeleteMultipleStickers = (stNums: number[]) => {
+    const numSet = new Set(stNums);
+    setStickers(prev => prev.filter(s => !numSet.has(s.number)));
+  };
+
+  const handleDeleteAllStickers = () => {
+    setStickers([]);
+  };
+
   const handleSaveSticker = (newSticker: Sticker) => {
     setStickers(prev => {
       const filtered = prev.filter(s => s.number !== newSticker.number);
@@ -154,6 +163,7 @@ export default function App() {
   const handleOpenPack = async (): Promise<Sticker[]> => {
     if (!user) throw new Error('Debes iniciar sesión.');
     if (user.packsCount <= 0) throw new Error('No tienes sobres disponibles.');
+    if (stickers.length === 0) throw new Error('No hay cromos disponibles en el álbum en este momento.');
 
     const pulled: Sticker[] = [];
     const newDuplicates = { ...(user.duplicates || {}) };
@@ -462,6 +472,8 @@ export default function App() {
               loadStickersFromFirestore();
             }}
             onDeleteSticker={handleDeleteSticker}
+            onDeleteMultipleStickers={handleDeleteMultipleStickers}
+            onDeleteAllStickers={handleDeleteAllStickers}
             onSaveSticker={handleSaveSticker}
           />
         )}

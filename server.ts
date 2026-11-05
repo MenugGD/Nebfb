@@ -1101,6 +1101,31 @@ app.post('/api/admin/stickers/delete', verifyAdmin, (req: Request, res: Response
   return res.json({ success: true, stickers: db.stickers });
 });
 
+app.post('/api/admin/stickers/delete-multiple', verifyAdmin, (req: Request, res: Response) => {
+  const { stickerNumbers } = req.body;
+  const db = getDB();
+  if (Array.isArray(stickerNumbers)) {
+    const numSet = new Set(stickerNumbers.map(n => Number(n)));
+    db.stickers = db.stickers.filter(s => !numSet.has(s.number));
+    saveDB(db);
+  }
+  return res.json({ success: true, stickers: db.stickers });
+});
+
+app.post('/api/admin/stickers/delete-all', verifyAdmin, (_req: Request, res: Response) => {
+  const db = getDB();
+  db.stickers = [];
+  saveDB(db);
+  return res.json({ success: true, stickers: [] });
+});
+
+app.post('/api/admin/stickers/restore-default', verifyAdmin, (_req: Request, res: Response) => {
+  const db = getDB();
+  db.stickers = [...INITIAL_STICKERS];
+  saveDB(db);
+  return res.json({ success: true, stickers: db.stickers });
+});
+
 app.post('/api/admin/codes/create', verifyAdmin, (req: Request, res: Response) => {
   const { code, rewardPacks, rewardCoins, rewardStickerNumber, maxUses, description } = req.body;
   if (!code) return res.status(400).json({ error: 'Escribe el código canjeable.' });

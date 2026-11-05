@@ -1,10 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import { Sticker, User, RedeemCode } from '../types';
 import { sounds } from '../utils/audio';
-import { Shield, Plus, Minus, Gift, Trash2, Edit, Sparkles, Users, KeyRound, Layers, CheckCircle2, AlertCircle, Upload, Palette, Cpu, Coins, Package } from 'lucide-react';
+import {
+  Shield,
+  Plus,
+  Minus,
+  Gift,
+  Trash2,
+  Edit,
+  Sparkles,
+  Users,
+  KeyRound,
+  Layers,
+  CheckCircle2,
+  AlertCircle,
+  Upload,
+  Palette,
+  Cpu,
+  Coins,
+  Package,
+  CheckSquare,
+  Square,
+  RotateCcw
+} from 'lucide-react';
 import { safeFetchJson } from '../services/api';
 import {
   deleteStickerFromFirestore,
+  deleteMultipleStickersFromFirestore,
+  deleteAllStickersFromFirestore,
+  restoreDefaultStickersToFirestore,
   saveStickerToFirestore,
   getFirestoreUsers,
   adminModifyUserInFirestore,
@@ -17,12 +41,24 @@ interface AdminPanelProps {
   stickers: Sticker[];
   onRefreshData: () => void;
   onDeleteSticker?: (stickerNumber: number) => void;
+  onDeleteMultipleStickers?: (stickerNumbers: number[]) => void;
+  onDeleteAllStickers?: () => void;
   onSaveSticker?: (sticker: Sticker) => void;
 }
 
-export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefreshData, onDeleteSticker, onSaveSticker }) => {
+export const AdminPanel: React.FC<AdminPanelProps> = ({
+  user,
+  stickers,
+  onRefreshData,
+  onDeleteSticker,
+  onDeleteMultipleStickers,
+  onDeleteAllStickers,
+  onSaveSticker
+}) => {
   const [usersList, setUsersList] = useState<User[]>([]);
   const [activeTab, setActiveTab] = useState<'users' | 'stickers' | 'codes' | 'ai'>('users');
+  const [selectedStickerNumbers, setSelectedStickerNumbers] = useState<number[]>([]);
+  const [isDeletingBatch, setIsDeletingBatch] = useState<boolean>(false);
 
   // Grant / Take state
   const [targetUser, setTargetUser] = useState<string>('');
@@ -279,6 +315,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
     }
   };
 
+  const toggleSelectSticker = (stickerNumber: number) => {
+    setSelectedStickerNumbers(prev =>
+      prev.includes(stickerNumber)
+        ? prev.filter(n => n !== stickerNumber)
+        : [...prev, stickerNumber]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (selectedStickerNumbers.length === stickers.length) {
+      setSelectedStickerNumbers([]);
+    } else {
+      setSelectedStickerNumbers(stickers.map(s => s.number));
+    }
+  };
+
   const handleDeleteSticker = async (stNum: number) => {
     if (!confirm(`¿Eliminar cromo #${stNum}?`)) return;
     setMsg(null);
@@ -302,10 +354,117 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
       }).catch(() => {});
 
       sounds.playPackTear();
+      setSelectedStickerNumbers(prev => prev.filter(n => n !== stNum));
       setMsg({ text: `¡Cromo #${stNum} eliminado con éxito de Firebase y del álbum!` });
       onRefreshData();
     } catch (err: any) {
       setMsg({ text: err.message || 'Error al eliminar cromo', isError: true });
+    }
+  };
+
+  const handleDeleteMultipleStickers = async () => {
+    if (selectedStickerNumbers.length === 0) return;
+    const count = selectedStickerNumbers.length;
+    if (!confirm(`¿Eliminar los ${count} cromos seleccionados?\nSe borrarán de Firebase y del álbum de forma permanente, y NO se volverán a regenerar.`)) {
+      return;
+    }
+
+    setIsDeletingBatch(true);
+    setMsg(null);
+    try {
+      // 1. Optimistic React state update
+      if (onDeleteMultipleStickers) {
+        onDeleteMultipleStickers(selectedStickerNumbers);
+      }
+
+      // 2. Direct Firestore batch deletion
+      await deleteMultipleStickersFromFirestore(selectedStickerNumbers);
+
+      // 3. Safe background Express sync
+      safeFetchJson('/api/admin/stickers/delete-multiple', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-user': user?.username || ''
+        },
+        body: JSON.stringify({ stickerNumbers: selectedStickerNumbers })
+      }).catch(() => {});
+
+      sounds.playPackTear();
+      setMsg({ text: `¡${count} cromos seleccionados eliminados permanentemente de Firebase!` });
+      setSelectedStickerNumbers([]);
+      onRefreshData();
+    } catch (err: any) {
+      setMsg({ text: err.message || 'Error al eliminar cromos seleccionados', isError: true });
+    } finally {
+      setIsDeletingBatch(false);
+    }
+  };
+
+  const handleDeleteAllStickers = async () => {
+    if (stickers.length === 0) return;
+    if (!confirm(`⚠️ ATENCIÓN: ¿Deseas eliminar TODOS los ${stickers.length} cromos del álbum?\nEsta acción vaciará por completo la base de datos de Firebase y los cromos NO se regenerarán automáticamente.`)) {
+      return;
+    }
+    if (!confirm('⚠️ Confirmación final: ¿Seguro que deseas vaciar el álbum completamente?')) {
+      return;
+    }
+
+    setIsDeletingBatch(true);
+    setMsg(null);
+    try {
+      // 1. Optimistic React state update
+      if (onDeleteAllStickers) {
+        onDeleteAllStickers();
+      }
+
+      // 2. Direct Firestore deletion
+      await deleteAllStickersFromFirestore();
+
+      // 3. Safe background Express sync
+      safeFetchJson('/api/admin/stickers/delete-all', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-user': user?.username || ''
+        }
+      }).catch(() => {});
+
+      sounds.playPackTear();
+      setMsg({ text: '¡Todos los cromos han sido eliminados de Firebase y el álbum ha quedado vacío!' });
+      setSelectedStickerNumbers([]);
+      onRefreshData();
+    } catch (err: any) {
+      setMsg({ text: err.message || 'Error al vaciar los cromos', isError: true });
+    } finally {
+      setIsDeletingBatch(false);
+    }
+  };
+
+  const handleRestoreDefaultCatalog = async () => {
+    if (!confirm('¿Deseas restaurar el catálogo oficial de los 40 cromos del Mundial 2026 en Firebase?')) {
+      return;
+    }
+    setIsDeletingBatch(true);
+    setMsg(null);
+    try {
+      await restoreDefaultStickersToFirestore();
+      safeFetchJson('/api/admin/stickers/restore-default', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-user': user?.username || ''
+        }
+      }).catch(() => {});
+
+      sounds.playFanfare();
+      setMsg({ text: '¡Catálogo oficial de 40 cromos restaurado en Firebase con éxito!' });
+      setSelectedStickerNumbers([]);
+      onRefreshData();
+    } catch (err: any) {
+      setMsg({ text: err.message || 'Error al restaurar catálogo', isError: true });
+    } finally {
+      setIsDeletingBatch(false);
     }
   };
 
@@ -777,41 +936,201 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, stickers, onRefres
           </div>
 
           <div className="lg:col-span-2 bg-slate-900/90 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
-            <h3 className="font-display font-extrabold text-base text-white">
-              Catálogo de Cromos ({stickers.length})
-            </h3>
+            {/* Header with Title and Global Actions */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+              <div>
+                <h3 className="font-display font-extrabold text-base text-white flex items-center gap-2">
+                  <span>Catálogo de Cromos</span>
+                  <span className="px-2 py-0.5 rounded-full bg-slate-800 text-amber-400 font-mono text-xs">
+                    {stickers.length}
+                  </span>
+                </h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Selecciona varios cromos con las casillas para eliminarlos en lote.
+                </p>
+              </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[550px] overflow-y-auto pr-2">
-              {stickers.map(st => (
-                <div key={st.id} className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 flex flex-col justify-between space-y-2">
-                  <div>
-                    <div className="flex items-center justify-between text-[10px]">
-                      <span className="font-mono font-bold text-amber-400">#{st.number}</span>
-                      <span className="text-slate-400 uppercase">{st.rarity}</span>
-                    </div>
-                    <img src={st.imageUrl} alt={st.name} className="w-full h-24 object-cover rounded my-1 border border-slate-800" />
-                    <h5 className="font-bold text-xs text-white truncate">{st.name}</h5>
-                    <p className="text-[10px] text-slate-400">{st.team}</p>
-                  </div>
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-800/60">
+              {/* Action Buttons */}
+              <div className="flex flex-wrap items-center gap-2">
+                {stickers.length > 0 && (
+                  <>
                     <button
-                      onClick={() => setEditingSticker(st)}
-                      className="text-[10px] text-amber-400 font-bold hover:underline flex items-center gap-1"
+                      type="button"
+                      onClick={handleSelectAll}
+                      disabled={isDeletingBatch}
+                      className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all"
+                      title={selectedStickerNumbers.length === stickers.length ? 'Deseleccionar todos' : 'Seleccionar todos'}
                     >
-                      <Edit className="w-3 h-3" />
-                      Editar
+                      {selectedStickerNumbers.length === stickers.length ? (
+                        <>
+                          <CheckSquare className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Deseleccionar Todos</span>
+                        </>
+                      ) : (
+                        <>
+                          <Square className="w-3.5 h-3.5 text-slate-400" />
+                          <span>Seleccionar Todos</span>
+                        </>
+                      )}
                     </button>
+
+                    {selectedStickerNumbers.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleDeleteMultipleStickers}
+                        disabled={isDeletingBatch}
+                        className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-lg shadow-rose-600/30 transition-all animate-pulse"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Borrar Seleccionados ({selectedStickerNumbers.length})</span>
+                      </button>
+                    )}
+
                     <button
-                      onClick={() => handleDeleteSticker(st.number)}
-                      className="text-[10px] text-rose-400 font-bold hover:underline flex items-center gap-1"
+                      type="button"
+                      onClick={handleDeleteAllStickers}
+                      disabled={isDeletingBatch}
+                      className="px-2.5 py-1.5 bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-800/80 rounded-xl text-xs font-bold flex items-center gap-1 transition-all"
+                      title="Eliminar todos los cromos del álbum"
                     >
-                      <Trash2 className="w-3 h-3" />
-                      Borrar
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Borrar TODOS</span>
                     </button>
-                  </div>
-                </div>
-              ))}
+                  </>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleRestoreDefaultCatalog}
+                  disabled={isDeletingBatch}
+                  className="px-2.5 py-1.5 bg-slate-800/60 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl text-xs font-semibold flex items-center gap-1 transition-all"
+                  title="Restaurar catálogo inicial oficial (40 cromos)"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Restaurar 40 Iniciales</span>
+                </button>
+              </div>
             </div>
+
+            {/* Selection Banner if items selected */}
+            {selectedStickerNumbers.length > 0 && (
+              <div className="bg-rose-950/50 border border-rose-800/60 rounded-2xl p-3 flex items-center justify-between gap-3 text-xs">
+                <span className="font-bold text-rose-300 flex items-center gap-2">
+                  <CheckSquare className="w-4 h-4 text-rose-400" />
+                  <span>{selectedStickerNumbers.length} cromos seleccionados para borrar</span>
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedStickerNumbers([])}
+                    className="text-slate-400 hover:text-white underline text-[11px]"
+                  >
+                    Cancelar selección
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDeleteMultipleStickers}
+                    disabled={isDeletingBatch}
+                    className="px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded-lg font-bold text-xs shadow"
+                  >
+                    {isDeletingBatch ? 'Borrando...' : 'Confirmar Borrado'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Empty State when 0 stickers */}
+            {stickers.length === 0 ? (
+              <div className="py-12 px-6 rounded-2xl bg-slate-950/60 border border-dashed border-slate-800 text-center space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-slate-900 border border-slate-800 text-slate-500 flex items-center justify-center mx-auto">
+                  <Layers className="w-6 h-6" />
+                </div>
+                <h4 className="font-bold text-sm text-white">No hay cromos en el álbum</h4>
+                <p className="text-xs text-slate-400 max-w-md mx-auto">
+                  Todos los cromos han sido eliminados de Firebase y no se regenerarán automáticamente.
+                  Puedes crear nuevos cromos con el formulario o restaurar el catálogo oficial de 40 cromos.
+                </p>
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={handleRestoreDefaultCatalog}
+                    disabled={isDeletingBatch}
+                    className="px-4 py-2 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg inline-flex items-center gap-2"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    <span>Restaurar Catálogo Oficial (40 Cromos)</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Stickers Grid with Checkbox Selectors */
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[550px] overflow-y-auto pr-2">
+                {stickers.map(st => {
+                  const isSelected = selectedStickerNumbers.includes(st.number);
+                  return (
+                    <div
+                      key={st.id}
+                      className={`relative p-2.5 rounded-xl border flex flex-col justify-between space-y-2 transition-all ${
+                        isSelected
+                          ? 'bg-rose-950/30 border-rose-500 ring-2 ring-rose-500/50 shadow-lg shadow-rose-950/40'
+                          : 'bg-slate-950 border-slate-800 hover:border-slate-700'
+                      }`}
+                    >
+                      {/* Checkbox Overlay Top-Right */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleSelectSticker(st.number);
+                        }}
+                        className={`absolute top-2 right-2 z-10 w-6 h-6 rounded-lg flex items-center justify-center transition-all ${
+                          isSelected
+                            ? 'bg-rose-600 text-white shadow-md'
+                            : 'bg-slate-900/90 hover:bg-slate-800 text-slate-400 border border-slate-700'
+                        }`}
+                        title={isSelected ? 'Deseleccionar cromo' : 'Seleccionar cromo para borrar'}
+                      >
+                        {isSelected ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                      </button>
+
+                      <div>
+                        <div className="flex items-center justify-between text-[10px] pr-7">
+                          <span className="font-mono font-bold text-amber-400">#{st.number}</span>
+                          <span className="text-slate-400 uppercase truncate">{st.rarity}</span>
+                        </div>
+                        <img
+                          src={st.imageUrl}
+                          alt={st.name}
+                          className="w-full h-24 object-cover rounded my-1 border border-slate-800"
+                        />
+                        <h5 className="font-bold text-xs text-white truncate">{st.name}</h5>
+                        <p className="text-[10px] text-slate-400">{st.team}</p>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-800/60">
+                        <button
+                          type="button"
+                          onClick={() => setEditingSticker(st)}
+                          className="text-[10px] text-amber-400 font-bold hover:underline flex items-center gap-1"
+                        >
+                          <Edit className="w-3 h-3" />
+                          <span>Editar</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteSticker(st.number)}
+                          disabled={isDeletingBatch}
+                          className="text-[10px] text-rose-400 font-bold hover:underline flex items-center gap-1"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>Borrar</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
         </div>

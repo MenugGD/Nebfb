@@ -183,8 +183,22 @@ export const AlbumView: React.FC<AlbumViewProps> = ({
       </div>
 
       {/* Sticker Grid View */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 sm:gap-6">
-        {filteredStickers.map(sticker => {
+      {filteredStickers.length === 0 ? (
+        <div className="py-16 px-6 text-center rounded-3xl bg-slate-900/40 border border-slate-800 space-y-3">
+          <p className="text-sm font-bold text-slate-300">
+            {stickers.length === 0
+              ? 'El álbum no tiene cromos actualmente.'
+              : `No hay cromos en la categoría "${selectedCategory}".`}
+          </p>
+          <p className="text-xs text-slate-500">
+            {stickers.length === 0
+              ? 'El administrador ha vaciado la colección o puedes crear nuevos cromos desde el panel de control.'
+              : 'Selecciona otra categoría o explora "Todos" para ver los cromos disponibles.'}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 sm:gap-6">
+          {filteredStickers.map(sticker => {
           const isPasted = pastedSet.has(sticker.number);
           const hasDuplicateAvailable = (duplicatesMap[sticker.number] || 0) > 0;
           const isHolo = sticker.rarity === 'dorada_holo';
@@ -296,6 +310,7 @@ export const AlbumView: React.FC<AlbumViewProps> = ({
           );
         })}
       </div>
+      )}
 
       {/* Sticker Detail Modal */}
       {selectedStickerDetail && (

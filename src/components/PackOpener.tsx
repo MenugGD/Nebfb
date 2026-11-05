@@ -53,8 +53,10 @@ export const PackOpener: React.FC<PackOpenerProps> = ({
       setTimeout(() => {
         setRevealedCards(cards);
       }, 700);
-    } catch {
+    } catch (err: any) {
       setOpening(false);
+      setIsTorn(false);
+      setBuySuccessMsg(err?.message || 'Error al abrir sobre');
     }
   };
 

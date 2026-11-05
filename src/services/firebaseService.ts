@@ -1,6 +1,7 @@
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   setDoc,
   updateDoc,
@@ -33,13 +34,31 @@ export const DEFAULT_STICKERS: Sticker[] = CATALOG_STICKERS;
 // Initialize Firestore collections safely and synchronize with Vercel/Firebase
 export async function initializeFirestoreSeed() {
   try {
-    const stickersSnap = await getDocs(collection(db, 'stickers'));
-    const existingNumbers = new Set(stickersSnap.docs.map(d => d.data().number));
+    const configRef = doc(db, 'system', 'config');
+    let configSnap;
+    try {
+      configSnap = await getDoc(configRef);
+    } catch {
+      // ignore
+    }
 
-    // Seed any missing stickers so both local and Vercel have all 40 stickers
-    for (const st of CATALOG_STICKERS) {
-      if (!existingNumbers.has(st.number)) {
-        await setDoc(doc(db, 'stickers', st.id), st);
+    const hasSeededBefore = (configSnap && configSnap.exists() && configSnap.data()?.initial_seed_done) ||
+      localStorage.getItem('album_catalog_seeded_v1') === 'true';
+
+    // If it has already seeded before, DO NOT re-seed deleted stickers
+    if (!hasSeededBefore) {
+      const stickersSnap = await getDocs(collection(db, 'stickers'));
+      if (!stickersSnap.empty) {
+        // Stickers already exist in Firestore, just persist seed lock
+        await setDoc(configRef, { initial_seed_done: true, initializedAt: new Date().toISOString() }, { merge: true });
+        localStorage.setItem('album_catalog_seeded_v1', 'true');
+      } else {
+        // Firestore stickers collection is genuinely virgin, seed the initial catalog
+        for (const st of CATALOG_STICKERS) {
+          await setDoc(doc(db, 'stickers', st.id), st);
+        }
+        await setDoc(configRef, { initial_seed_done: true, initializedAt: new Date().toISOString() }, { merge: true });
+        localStorage.setItem('album_catalog_seeded_v1', 'true');
       }
     }
   } catch (error) {
@@ -171,11 +190,11 @@ export async function registerWithFirestore(username: string, pass: string): Pro
 export async function getFirestoreStickers(): Promise<Sticker[]> {
   try {
     const snap = await getDocs(collection(db, 'stickers'));
-    if (snap.empty) return DEFAULT_STICKERS;
+    if (snap.empty) return [];
     return snap.docs.map(doc => doc.data() as Sticker).sort((a, b) => a.number - b.number);
   } catch (error) {
     logFirestoreError(error, 'getStickers');
-    return DEFAULT_STICKERS;
+    return [];
   }
 }
 
@@ -183,19 +202,15 @@ export async function getFirestoreStickers(): Promise<Sticker[]> {
 export function subscribeFirestoreStickers(callback: (stickers: Sticker[]) => void) {
   try {
     return onSnapshot(collection(db, 'stickers'), (snapshot) => {
-      if (!snapshot.empty) {
-        const list = snapshot.docs.map(d => d.data() as Sticker);
-        callback(list.sort((a, b) => a.number - b.number));
-      } else {
-        callback(DEFAULT_STICKERS);
-      }
+      const list = snapshot.docs.map(d => d.data() as Sticker);
+      callback(list.sort((a, b) => a.number - b.number));
     }, (error) => {
       logFirestoreError(error, 'subscribeStickers');
-      callback(DEFAULT_STICKERS);
+      callback([]);
     });
   } catch (error) {
     logFirestoreError(error, 'subscribeStickersInit');
-    callback(DEFAULT_STICKERS);
+    callback([]);
     return () => {};
   }
 }
@@ -328,8 +343,83 @@ export async function deleteStickerFromFirestore(stickerNumber: number): Promise
         // ignore individual if already deleted
       }
     }
+
+    // Lock seed so deleted sticker is never regenerated
+    try {
+      await setDoc(doc(db, 'system', 'config'), { initial_seed_done: true }, { merge: true });
+      localStorage.setItem('album_catalog_seeded_v1', 'true');
+    } catch {}
   } catch (error) {
     logFirestoreError(error, 'deleteStickerFromFirestore');
+    throw error;
+  }
+}
+
+// Delete Multiple Stickers from Firestore at the same time
+export async function deleteMultipleStickersFromFirestore(stickerNumbers: number[]): Promise<void> {
+  try {
+    if (!stickerNumbers || stickerNumbers.length === 0) return;
+    const numSet = new Set(stickerNumbers.map(n => Number(n)));
+
+    // Find all matching docs in stickers collection
+    const snap = await getDocs(collection(db, 'stickers'));
+    const deletePromises: Promise<any>[] = [];
+
+    snap.docs.forEach(d => {
+      const data = d.data();
+      const num = Number(data.number);
+      if (numSet.has(num)) {
+        deletePromises.push(deleteDoc(d.ref));
+      }
+    });
+
+    // Also delete any candidate ID formats
+    for (const num of numSet) {
+      deletePromises.push(deleteDoc(doc(db, 'stickers', `cromo_${num}`)).catch(() => {}));
+      deletePromises.push(deleteDoc(doc(db, 'stickers', `cromo_${String(num).padStart(3, '0')}`)).catch(() => {}));
+    }
+
+    await Promise.all(deletePromises);
+
+    // Lock seed so deleted stickers are never regenerated
+    try {
+      await setDoc(doc(db, 'system', 'config'), { initial_seed_done: true }, { merge: true });
+      localStorage.setItem('album_catalog_seeded_v1', 'true');
+    } catch {}
+  } catch (error) {
+    logFirestoreError(error, 'deleteMultipleStickersFromFirestore');
+    throw error;
+  }
+}
+
+// Delete ALL Stickers from Firestore
+export async function deleteAllStickersFromFirestore(): Promise<void> {
+  try {
+    const snap = await getDocs(collection(db, 'stickers'));
+    const deletePromises = snap.docs.map(d => deleteDoc(d.ref));
+    await Promise.all(deletePromises);
+
+    // Lock seed so stickers do NOT regenerate upon empty collection
+    try {
+      await setDoc(doc(db, 'system', 'config'), { initial_seed_done: true, clearedAt: new Date().toISOString() }, { merge: true });
+      localStorage.setItem('album_catalog_seeded_v1', 'true');
+    } catch {}
+  } catch (error) {
+    logFirestoreError(error, 'deleteAllStickersFromFirestore');
+    throw error;
+  }
+}
+
+// Restore default catalog (only if explicitly requested by Admin)
+export async function restoreDefaultStickersToFirestore(): Promise<void> {
+  try {
+    for (const st of CATALOG_STICKERS) {
+      await setDoc(doc(db, 'stickers', st.id), st);
+    }
+    await setDoc(doc(db, 'system', 'config'), { initial_seed_done: true, restoredAt: new Date().toISOString() }, { merge: true });
+    localStorage.setItem('album_catalog_seeded_v1', 'true');
+  } catch (error) {
+    logFirestoreError(error, 'restoreDefaultStickersToFirestore');
     throw error;
   }
 }
